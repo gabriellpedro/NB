@@ -12,7 +12,7 @@ class CardConstructor extends StatelessWidget {
   Widget build(BuildContext context) {
     Map<int, Map<String, String>> dados = infoCard();
 
-    List<int> listaDeCardsPlayer = [1, 4, 7];
+    List<int> listaDeCardsPlayer = [1, 4, 7, 30, 31, 32, 33, 43];
 
     return Scaffold(
       appBar: AppBar(
