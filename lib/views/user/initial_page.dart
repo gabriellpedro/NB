@@ -1,7 +1,9 @@
 // ignore_for_file: prefer_const_constructors, prefer_const_literals_to_create_immutables
 
 import 'package:flutter/material.dart';
+import 'package:nb_game/views/game_page.dart';
 import 'package:nb_game/views/providers/how_to_play.dart';
+import 'package:nb_game/widgets/card_constructor.dart';
 
 class InitialPage extends StatelessWidget {
   const InitialPage({super.key});
@@ -85,7 +87,12 @@ class InitialPage extends StatelessWidget {
                     width: 2,
                   ),
                 ),
-                onPressed: () {},
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => GamePage()),
+                  );
+                },
                 child: Text(
                   'Iniciar',
                   style: TextStyle(

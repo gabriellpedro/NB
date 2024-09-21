@@ -12,43 +12,49 @@ class CardConstructor extends StatelessWidget {
   Widget build(BuildContext context) {
     Map<int, Map<String, String>> dados = infoCard();
 
-    List<int> listaDeCardsPlayer = [1, 4, 7, 30, 31, 32, 33, 43];
+    List<int> listaDeCardsPlayer = [1, 3, 20];
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text('Map com IDs, Títulos e Descrições'),
-      ),
+      appBar: AppBar(), //Adicionar modo de sair//
       body: SizedBox(
         width: 400,
-        height: 500,
+        height: 600,
         child: PageView(
           controller: PageController(viewportFraction: 0.6),
-          children:
-              listaDeCardsPlayer.where((key) => dados.containsKey(key)).map(
-            (key) {
-              return buildCard(
-                title: Text(
-                  dados[key]!['Titulo'] ?? 'Sem Título',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                  ),
-                ),
-                description: Text(
-                  dados[key]!['Descricao'] ?? 'Sem Descrição',
-                  textAlign: TextAlign.justify,
-                  style: TextStyle(
-                    fontSize: 20,
-                  ),
-                ),
-                color: getColorFromString(
-                  dados[key]!['Color'] ?? 'azul',
-                ),
-              );
-            },
-          ).toList(),
+          children: listaDeCardsPlayer
+              .where((key) => dados.containsKey(key))
+              .map(
+                (key) {
+                  if ((dados[key]!['Titulo'] ?? '').isEmpty ||
+                      (dados[key]!['Descricao'] ?? '').isEmpty) {
+                    return null;
+                  }
+                  return buildCard(
+                    title: Text(
+                      dados[key]!['Titulo'] ?? 'Sem Título',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                    description: Text(
+                      dados[key]!['Descricao'] ?? 'Sem Descrição',
+                      textAlign: TextAlign.justify,
+                      style: TextStyle(
+                        fontSize: 20,
+                      ),
+                    ),
+                    color: getColorFromString(
+                      dados[key]!['Color'] ?? 'azul',
+                    ),
+                  );
+                },
+              )
+              .where((card) => card != null)
+              .toList()
+              .cast<Widget>(),
         ),
       ),
     );
