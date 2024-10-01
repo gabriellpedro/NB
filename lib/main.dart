@@ -1,11 +1,18 @@
+// ignore_for_file: prefer_const_constructors
+
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nb_game/views/game_page.dart';
-import 'package:nb_game/views/providers/how_to_play.dart';
-import 'package:nb_game/views/user/initial_page.dart';
-import 'package:nb_game/widgets/card_constructor.dart';
+// import 'package:nb_game/views/providers/how_to_play.dart';
+// import 'package:nb_game/views/user/initial_page.dart';
+// import 'package:nb_game/widgets/card_constructor.dart';
 
 void main() {
-  runApp(const MyApp());
+  runApp(
+    ProviderScope(
+      child: const MyApp(),
+    ),
+  );
 }
 
 class MyApp extends StatelessWidget {

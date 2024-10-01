@@ -3,7 +3,6 @@
 import 'package:flutter/material.dart';
 import 'package:nb_game/views/game_page.dart';
 import 'package:nb_game/views/providers/how_to_play.dart';
-import 'package:nb_game/widgets/card_constructor.dart';
 
 class InitialPage extends StatelessWidget {
   const InitialPage({super.key});

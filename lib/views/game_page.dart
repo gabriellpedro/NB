@@ -1,26 +1,33 @@
 // ignore_for_file: prefer_const_constructors, prefer_const_literals_to_create_immutables
-
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/widgets.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:nb_game/provider/user_provider.dart';
 import 'package:nb_game/widgets/board_position_widget.dart';
 import 'package:nb_game/widgets/card_constructor.dart';
 import 'package:nb_game/widgets/dice_widget.dart';
 import 'package:nb_game/widgets/name_widget.dart';
 
-class GamePage extends StatelessWidget {
+class GamePage extends ConsumerWidget {
   const GamePage({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final userAsyncValue = ref.watch(userProvider);
+
     return Scaffold(
       body: Column(
         children: [
           SizedBox(
             height: 100,
           ),
-          PlayerNameWidget(
-            fetchPlayerName: Future(() => 'Leandro'),
+          userAsyncValue.when(
+            data: (user) {
+              return PlayerNameWidget(
+                playerName: user.name.toString(),
+              );
+            },
+            loading: () => CircularProgressIndicator(),
+            error: (err, stack) => Text('Erro: $err'),
           ),
           Expanded(
             child: CardConstructor(),
@@ -29,7 +36,7 @@ class GamePage extends StatelessWidget {
             height: 50,
           ),
           PositionWidget(
-            position: '1 - Casa do LEANDRO',
+            position: '1 - Casa do',
           ),
           Expanded(
             child: ButtonConstuctor(),

@@ -1,7 +1,7 @@
 // ignore_for_file: prefer_const_constructors
 
 import 'package:flutter/material.dart';
-import 'package:nb_game/howtoplay_text.dart';
+// import 'package:nb_game/howtoplay_text.dart';
 
 class HowToPlayInstructCard extends StatelessWidget {
   final String nameCard;
