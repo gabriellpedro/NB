@@ -1,37 +1,33 @@
 // ignore_for_file: prefer_const_constructors, sort_child_properties_last
-
 import 'package:flutter/material.dart';
-import 'package:nb_game/views/providers/card_info_function.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:nb_game/model/user_model_base.dart';
+import 'package:nb_game/provider/user_provider.dart';
 import 'package:nb_game/widgets/build_card.dart';
 import 'package:nb_game/widgets/get_color.dart';
 
-class CardConstructor extends StatelessWidget {
+class CardConstructor extends ConsumerWidget {
   const CardConstructor({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    Map<int, Map<String, String>> dados = infoCard();
-
-    List<int> listaDeCardsPlayer = [1, 3, 20];
+  Widget build(BuildContext context, WidgetRef ref) {
+    final apiAsyncValue = ref.watch(userAndDeckProvider);
 
     return Scaffold(
-      appBar: AppBar(), //Adicionar modo de sair//
-      body: SizedBox(
-        width: 400,
-        height: 600,
-        child: PageView(
-          controller: PageController(viewportFraction: 0.6),
-          children: listaDeCardsPlayer
-              .where((key) => dados.containsKey(key))
-              .map(
-                (key) {
-                  if ((dados[key]!['Titulo'] ?? '').isEmpty ||
-                      (dados[key]!['Descricao'] ?? '').isEmpty) {
-                    return null;
-                  }
+      appBar: AppBar(),
+      body: apiAsyncValue.when(
+        data: (gameResponse) {
+          List<CardDeck> cardDecks = gameResponse.cardDeck;
+          return SizedBox(
+            width: 400,
+            height: 600,
+            child: PageView(
+              controller: PageController(viewportFraction: 0.6),
+              children: cardDecks.map(
+                (cardDeck) {
                   return buildCard(
                     title: Text(
-                      dados[key]!['Titulo'] ?? 'Sem Título',
+                      'Titulo Carta: ${cardDeck.title}',
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         fontSize: 18,
@@ -40,35 +36,28 @@ class CardConstructor extends StatelessWidget {
                       ),
                     ),
                     description: Text(
-                      dados[key]!['Descricao'] ?? 'Sem Descrição',
+                      'Descrição: ${cardDeck.description}',
                       textAlign: TextAlign.justify,
                       style: TextStyle(
                         fontSize: 20,
                       ),
                     ),
                     color: getColorFromString(
-                      dados[key]!['Color'] ?? 'azul',
+                      'azul',
                     ),
                   );
                 },
-              )
-              .where((card) => card != null)
-              .toList()
-              .cast<Widget>(),
+              ).toList(),
+            ),
+          );
+        },
+        loading: () => Center(
+          child: CircularProgressIndicator(),
+        ),
+        error: (err, stack) => Center(
+          child: Text('Erro: $err'),
         ),
       ),
     );
   }
 }
-
-
-
-
-
-
-// Card(
-//               child: ListTile(
-//                 title: Text(dados[key]!['Titulo'] ?? 'Sem Título'),
-//                 subtitle: Text(dados[key]!['Descricao'] ?? 'Sem Descrição'),
-//               ),
-//             );

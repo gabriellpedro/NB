@@ -12,7 +12,7 @@ class GamePage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final userAsyncValue = ref.watch(userProvider);
+    final userAsyncValue = ref.watch(userAndDeckProvider);
 
     return Scaffold(
       body: Column(
@@ -23,7 +23,7 @@ class GamePage extends ConsumerWidget {
           userAsyncValue.when(
             data: (user) {
               return PlayerNameWidget(
-                playerName: user.name.toString(),
+                playerName: user.user.name.toString(),
               );
             },
             loading: () => CircularProgressIndicator(),
