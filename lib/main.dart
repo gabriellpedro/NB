@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nb_game/views/game_page.dart';
 import 'package:nb_game/views/user/initial_page.dart';
+import 'package:nb_game/widgets/register/user_register_widget.dart';
 // import 'package:nb_game/views/providers/how_to_play.dart';
 // import 'package:nb_game/views/user/initial_page.dart';
 // import 'package:nb_game/widgets/card_constructor.dart';
@@ -27,7 +28,7 @@ class MyApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
         useMaterial3: true,
       ),
-      home: const InitialPage(),
+      home: InitialPage(),
     );
   }
 }

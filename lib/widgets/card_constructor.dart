@@ -14,7 +14,6 @@ class CardConstructor extends ConsumerWidget {
     final apiAsyncValue = ref.watch(userAndDeckProvider);
 
     return Scaffold(
-      appBar: AppBar(),
       body: apiAsyncValue.when(
         data: (gameResponse) {
           List<CardDeck> cardDecks = gameResponse.cardDeck;

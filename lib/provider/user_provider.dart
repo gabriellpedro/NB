@@ -4,12 +4,16 @@ import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
 import 'package:nb_game/model/user_model_api.dart';
+import 'package:nb_game/storage/storage_preferences.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 final userAndDeckProvider = FutureProvider<GameResponse>(
   (ref) async {
-    final String userId = 'aSfwEF17TCslSXs38T2K';
-    final url = Uri.parse('http://10.0.2.2:5000/users/$userId');
+    final localStorageService = LocalStorageService();
 
+    final String? userId = await localStorageService.retrieveUserId();
+    final url = Uri.parse('https://nb-game-mja.wn.r.appspot.com/users/$userId');
+    // final url = Uri.parse('http://127.0.0.1:8080/users/$userId');
     final response = await http.get(
       url,
       headers: {

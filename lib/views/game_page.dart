@@ -36,7 +36,7 @@ class GamePage extends ConsumerWidget {
             height: 50,
           ),
           PositionWidget(
-            position: '1 - Casa do',
+            position: '1º Casa',
           ),
           Expanded(
             child: ButtonConstuctor(),
