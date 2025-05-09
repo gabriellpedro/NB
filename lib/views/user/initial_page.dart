@@ -12,14 +12,14 @@ class InitialPage extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       body: Container(
-        padding: EdgeInsets.only(top: 175, left: 40, right: 40),
+        padding: EdgeInsets.only(top: 175, left: 60, right: 60),
         decoration: BoxDecoration(
           gradient: LinearGradient(
             colors: [
-              Color.fromARGB(1000, 108, 151, 206),
-              Color.fromARGB(1000, 132, 84, 170),
-              Color.fromARGB(1000, 211, 170, 88),
-              Color.fromARGB(1000, 213, 100, 80),
+              Color.fromARGB(255, 108, 151, 206),
+              Color.fromARGB(255, 132, 84, 170),
+              Color.fromARGB(255, 211, 170, 88),
+              Color.fromARGB(255, 213, 100, 80),
             ],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
@@ -28,20 +28,21 @@ class InitialPage extends StatelessWidget {
         child: ListView(
           children: <Widget>[
             SizedBox(
-              width: 275,
-              height: 275,
+              width: 175,
+              height: 175,
               child: Image.asset('assets/images/initialpagelogo.png'),
             ),
             SizedBox(
               height: 50,
             ),
             SizedBox(
-              width: 10,
+              width: 100,
               height: 65,
               child: FilledButton(
                 style: FilledButton.styleFrom(
+                  minimumSize: Size.fromWidth(200),
                   backgroundColor: Color.fromARGB(
-                    1000,
+                    255,
                     108,
                     151,
                     206,
@@ -62,7 +63,7 @@ class InitialPage extends StatelessWidget {
                   style: TextStyle(
                     fontWeight: FontWeight.bold,
                     color: Colors.black,
-                    fontSize: 28,
+                    fontSize: 20,
                   ),
                   textAlign: TextAlign.center,
                 ),
@@ -77,7 +78,7 @@ class InitialPage extends StatelessWidget {
               child: FilledButton(
                 style: FilledButton.styleFrom(
                   backgroundColor: Color.fromARGB(
-                    1000,
+                    255,
                     211,
                     170,
                     88,
@@ -98,7 +99,7 @@ class InitialPage extends StatelessWidget {
                   style: TextStyle(
                     fontWeight: FontWeight.bold,
                     color: Colors.black,
-                    fontSize: 28,
+                    fontSize: 20,
                   ),
                   textAlign: TextAlign.center,
                 ),

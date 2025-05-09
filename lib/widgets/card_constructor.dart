@@ -29,7 +29,7 @@ class CardConstructor extends ConsumerWidget {
                       'Titulo Carta: ${cardDeck.title}',
                       textAlign: TextAlign.center,
                       style: TextStyle(
-                        fontSize: 18,
+                        fontSize: 14,
                         fontWeight: FontWeight.bold,
                         color: Colors.white,
                       ),
@@ -38,7 +38,7 @@ class CardConstructor extends ConsumerWidget {
                       'Descrição: ${cardDeck.description}',
                       textAlign: TextAlign.justify,
                       style: TextStyle(
-                        fontSize: 20,
+                        fontSize: 16,
                       ),
                     ),
                     color: getColorFromString(

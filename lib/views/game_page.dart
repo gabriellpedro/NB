@@ -2,10 +2,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nb_game/provider/user_provider.dart';
+import 'package:nb_game/storage/storage_preferences.dart';
 import 'package:nb_game/widgets/board_position_widget.dart';
 import 'package:nb_game/widgets/card_constructor.dart';
 import 'package:nb_game/widgets/dice_widget.dart';
 import 'package:nb_game/widgets/name_widget.dart';
+import 'package:nb_game/widgets/round_id_label.dart';
 
 class GamePage extends ConsumerWidget {
   const GamePage({super.key});
@@ -38,9 +40,16 @@ class GamePage extends ConsumerWidget {
           PositionWidget(
             position: '1º Casa',
           ),
+          SizedBox(
+            height: 10,
+          ),
           Expanded(
             child: ButtonConstuctor(),
           ),
+          SizedBox(
+            height: 50,
+          ),
+          RoundIdLabelWidget()
         ],
       ),
     );
