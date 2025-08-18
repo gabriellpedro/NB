@@ -6,57 +6,81 @@ import 'package:nb_game/provider/user_provider.dart';
 import 'package:nb_game/widgets/build_card.dart';
 import 'package:nb_game/widgets/get_color.dart';
 
-class CardConstructor extends ConsumerWidget {
+class CardConstructor extends ConsumerStatefulWidget {
   const CardConstructor({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  _CardConstructorState createState() => _CardConstructorState();
+}
+
+class _CardConstructorState extends ConsumerState<CardConstructor> {
+  late PageController _pageController;
+
+  @override
+  void initState() {
+    super.initState();
+    _pageController = PageController(viewportFraction: 0.15);
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final apiAsyncValue = ref.watch(userAndDeckProvider);
 
-    return Scaffold(
-      body: apiAsyncValue.when(
-        data: (gameResponse) {
-          List<CardDeck> cardDecks = gameResponse.cardDeck;
-          return SizedBox(
-            width: 400,
-            height: 600,
-            child: PageView(
-              controller: PageController(viewportFraction: 0.6),
-              children: cardDecks.map(
-                (cardDeck) {
-                  return buildCard(
-                    title: Text(
-                      'Titulo Carta: ${cardDeck.title}',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                      ),
+    return apiAsyncValue.when(
+      data: (gameResponse) {
+        List<CardDeck> cardDecks = gameResponse.cardDeck;
+
+        return PageView.builder(
+          controller: _pageController,
+          itemCount: cardDecks.length,
+          itemBuilder: (context, index) {
+            return AnimatedBuilder(
+              animation: _pageController,
+              builder: (context, child) {
+                double scale = 1.0;
+                if (_pageController.position.haveDimensions) {
+                  double page = _pageController.page ??
+                      _pageController.initialPage.toDouble();
+                  scale = 0.9 + (1 - (page - index).abs()) * 0.1;
+                  scale = scale.clamp(0.9, 1.0);
+                }
+                return Transform.scale(
+                  scale: scale,
+                  child: child,
+                );
+              },
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                child: buildCard(
+                  title: Text(
+                    'Título Carta: ${cardDecks[index].title}',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
                     ),
-                    description: Text(
-                      'Descrição: ${cardDeck.description}',
-                      textAlign: TextAlign.justify,
-                      style: TextStyle(
-                        fontSize: 16,
-                      ),
-                    ),
-                    color: getColorFromString(
-                      'azul',
-                    ),
-                  );
-                },
-              ).toList(),
-            ),
-          );
-        },
-        loading: () => Center(
-          child: CircularProgressIndicator(),
-        ),
-        error: (err, stack) => Center(
-          child: Text('Erro: $err'),
-        ),
-      ),
+                  ),
+                  description: Text(
+                    'Descrição: ${cardDecks[index].description}',
+                    textAlign: TextAlign.justify,
+                    style: TextStyle(fontSize: 16),
+                  ),
+                  color: getColorFromString('azul'),
+                ),
+              ),
+            );
+          },
+        );
+      },
+      loading: () => Center(child: CircularProgressIndicator()),
+      error: (err, stack) => Center(child: Text('Erro: $err')),
     );
   }
 }

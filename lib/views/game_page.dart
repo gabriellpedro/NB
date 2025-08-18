@@ -5,7 +5,7 @@ import 'package:nb_game/provider/user_provider.dart';
 import 'package:nb_game/storage/storage_preferences.dart';
 import 'package:nb_game/widgets/board_position_widget.dart';
 import 'package:nb_game/widgets/card_constructor.dart';
-import 'package:nb_game/widgets/dice_widget.dart';
+import 'package:nb_game/widgets/button_options.dart';
 import 'package:nb_game/widgets/name_widget.dart';
 import 'package:nb_game/widgets/round_id_label.dart';
 

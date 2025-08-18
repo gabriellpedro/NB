@@ -13,14 +13,46 @@ Future<void> postAndStoreData(
   String? roundId,
 }) async {
   try {
-    // final url = Uri.parse('http://127.0.0.1:8080/users/');
+    //final url = Uri.parse('http://127.0.0.1:8080/users/');
     final url = Uri.parse('https://nb-game-mja.wn.r.appspot.com/users/');
+
+    String formatRfc1123(DateTime dateTime) {
+      final weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+      final months = [
+        'Jan',
+        'Feb',
+        'Mar',
+        'Apr',
+        'May',
+        'Jun',
+        'Jul',
+        'Aug',
+        'Sep',
+        'Oct',
+        'Nov',
+        'Dec'
+      ];
+
+      final utc = dateTime.toUtc();
+      final weekday = weekdays[utc.weekday - 1];
+      final month = months[utc.month - 1];
+      final day = utc.day.toString().padLeft(2, '0');
+      final hour = utc.hour.toString().padLeft(2, '0');
+      final minute = utc.minute.toString().padLeft(2, '0');
+      final second = utc.second.toString().padLeft(2, '0');
+
+      return '$weekday, $day $month ${utc.year} $hour:$minute:$second GMT';
+    }
+
+    final createdAt = formatRfc1123(
+        DateTime.now().toUtc().subtract(const Duration(minutes: 1)));
 
     final Map<String, dynamic> bodyData = {
       'name': name, // Campo obrigatório
       'game_pin': gamePin, // Campo obrigatório
       'birth_date': birthDate, // Campo obrigatório
       'round_id': roundId, // Campo opcional
+      //'created_at': createdAt
     };
 
     // Envia a requisição POST

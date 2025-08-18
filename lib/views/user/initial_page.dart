@@ -2,7 +2,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:nb_game/views/game_page.dart';
-import 'package:nb_game/views/providers/how_to_play.dart';
+import 'package:nb_game/views/how_to_play.dart';
 import 'package:nb_game/widgets/register/user_register_widget.dart';
 
 class InitialPage extends StatelessWidget {
