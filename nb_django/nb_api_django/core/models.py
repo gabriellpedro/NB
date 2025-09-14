@@ -5,13 +5,17 @@ class Partida(models.Model):
     id_partida = models.AutoField(primary_key=True)
     criado_em = models.DateTimeField(auto_now_add=True)
     ativo = models.BooleanField(default=True)
-    id_jogador_amarelo = models.IntegerField(null=True, blank=True)
-    id_jogador_azul = models.IntegerField(null=True, blank=True)
-    id_jogador_preto = models.IntegerField(null=True, blank=True)
-    id_jogador_roxo = models.IntegerField(null=True, blank=True)
+
+    # Guardando apenas o ID do jogador (Integer ou ObjectId em string)
+    id_jogador_amarelo = models.CharField(max_length=24, null=True, blank=True)
+    id_jogador_azul = models.CharField(max_length=24, null=True, blank=True)
+    id_jogador_preto = models.CharField(max_length=24, null=True, blank=True)
+    id_jogador_roxo = models.CharField(max_length=24, null=True, blank=True)
 
     def __str__(self):
         return f"Partida {self.id_partida}"
+
+
 
 
 class ControlePartida(models.Model):
@@ -33,7 +37,12 @@ class Jogador(models.Model):
     id_jogador = models.AutoField(primary_key=True)
     nome_jogador = models.CharField(max_length=100)
     cor_jogador = models.CharField(max_length=50)
-    id_partida = models.ForeignKey(Partida, on_delete=models.CASCADE)
+    id_partida = models.ForeignKey(
+        Partida, 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True
+    )
     id_baralho = models.IntegerField(null=True, blank=True)
     id_casa = models.IntegerField(null=True, blank=True)
 
@@ -41,11 +50,13 @@ class Jogador(models.Model):
         return self.nome_jogador
 
 
+
 class Baralho(models.Model):
     id_baralho = models.AutoField(primary_key=True)
     id_partida = models.ForeignKey('Partida', on_delete=models.CASCADE) 
-    id_jogador = models.OneToOneField('Jogador', on_delete=models.CASCADE, null=True, blank=True)  
+    id_jogador = models.OneToOneField('Jogador', on_delete=models.SET_NULL, null=True, blank=True)  
     lista_de_cartas = models.TextField(null=True, blank=True) 
+
 
 
 
