@@ -1,0 +1,73 @@
+# Python
+*.pyc
+*.pyo
+*.pyd
+__pycache__/
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+eggs/
+parts/
+var/
+*.log
+*.pot
+*.mo
+
+# Virtual Environments
+venv/
+ENV/
+env/
+.env/
+*.env
+
+# Django
+*.sqlite3
+db.sqlite3
+/media/
+staticfiles/
+*.log
+*.pot
+*.py[cod]
+__pycache__/
+local_settings.py
+migrations/
+
+# PyCharm
+.idea/
+
+# VSCode
+.vscode/
+
+# MacOS
+.DS_Store
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Coverage and test reports
+.coverage
+*.cover
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.coveragerc
+*.py,cover
+.hypothesis/
+.pytest_cache/
+
+# Docker
+*.pid
+*.swp
+docker-compose.override.yml
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Secrets
+*.key
+*.pem
