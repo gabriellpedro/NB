@@ -24,32 +24,17 @@ class GamePage extends ConsumerWidget {
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   const SizedBox(height: 20),
-                  PlayerNameWidget(
-                    playerName: jogador.nomeJogador,
-                  ),
+                  PlayerNameWidget(playerName: jogador.nomeJogador),
                   const SizedBox(height: 20),
-
-                  // Cartas do jogador
-                  SizedBox(
-                    height: 300,
-                    child: CardConstructor(),
-                  ),
-
+                  const CardConstructor(),
                   const SizedBox(height: 50),
                   PositionWidget(
-                    position:
-                        (jogador.idCasa != null && jogador.nomeCasa != null)
-                            ? '${jogador.idCasa} - ${jogador.nomeCasa}'
-                            : 'Sem posição',
+                    position: (jogador.idCasa != null && jogador.nomeCasa != null)
+                        ? '${jogador.idCasa} - ${jogador.nomeCasa}'
+                        : 'Sem posição',
                   ),
-
                   const SizedBox(height: 10),
-
-                  SizedBox(
-                    height: 120,
-                    child: ButtonConstuctor(),
-                  ),
-
+                  const SizedBox(height: 120, child: ButtonConstuctor()),
                   const SizedBox(height: 50),
                   RoundIdLabelWidget(),
                 ],
@@ -57,15 +42,7 @@ class GamePage extends ConsumerWidget {
             );
           },
           loading: () => const Center(child: CircularProgressIndicator()),
-          error: (err, stack) => SingleChildScrollView(
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Text(
-                'Erro: $err',
-                style: const TextStyle(color: Colors.red),
-              ),
-            ),
-          ),
+          error: (err, _) => Center(child: Text('Erro: $err', style: const TextStyle(color: Colors.red))),
         ),
       ),
     );

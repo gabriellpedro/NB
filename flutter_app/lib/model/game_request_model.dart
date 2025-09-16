@@ -1,4 +1,3 @@
-// Modelo para a Carta
 class Carta {
   final int idCarta;
   final String nomeCarta;
@@ -25,14 +24,13 @@ class Carta {
   }
 }
 
-// Modelo para o Jogador
 class Jogador {
   final int idPartida;
   final int idJogador;
   final String nomeJogador;
   final String corJogador;
   final int? idCasa;
-  final String? nomeCasa; // Novo campo vindo do backend
+  final String? nomeCasa;
   final List<Carta> cartas;
 
   Jogador({
@@ -46,7 +44,6 @@ class Jogador {
   });
 
   factory Jogador.fromJson(Map<String, dynamic> json) {
-    // Caso 'cartas' seja nulo, cria lista vazia
     var cartasJson = json['cartas'] as List<dynamic>? ?? [];
     List<Carta> cartasList = cartasJson.map((c) => Carta.fromJson(c)).toList();
 
@@ -56,8 +53,28 @@ class Jogador {
       nomeJogador: json['nome_jogador'],
       corJogador: json['cor_jogador'],
       idCasa: json['id_casa'],
-      nomeCasa: json['nome_casa'], 
+      nomeCasa: json['nome_casa'],
       cartas: cartasList,
+    );
+  }
+
+  Jogador copyWith({
+    int? idPartida,
+    int? idJogador,
+    String? nomeJogador,
+    String? corJogador,
+    int? idCasa,
+    String? nomeCasa,
+    List<Carta>? cartas,
+  }) {
+    return Jogador(
+      idPartida: idPartida ?? this.idPartida,
+      idJogador: idJogador ?? this.idJogador,
+      nomeJogador: nomeJogador ?? this.nomeJogador,
+      corJogador: corJogador ?? this.corJogador,
+      idCasa: idCasa ?? this.idCasa,
+      nomeCasa: nomeCasa ?? this.nomeCasa,
+      cartas: cartas ?? this.cartas,
     );
   }
 }

@@ -1,5 +1,5 @@
+// ignore_for_file: prefer_const_constructors, prefer_const_literals_to_create_immutables
 import 'package:flutter/material.dart';
-import 'package:nb_game/storage/storage_preferences.dart';
 import 'package:nb_game/widgets/dice_button.dart';
 import 'package:nb_game/widgets/discard_cart.dart';
 import 'package:nb_game/widgets/pickup_card.dart';
@@ -12,49 +12,24 @@ class ButtonConstuctor extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final storage = LocalStorageService();
-
-    return FutureBuilder(
-      future: Future.wait([
-        storage.retrieveRoundId(),
-        storage.retrieveUserId(),
-      ]),
-      builder: (context, AsyncSnapshot<List<dynamic>> snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
-        }
-
-        if (snapshot.hasError || snapshot.data == null) {
-          return const Center(child: Text("Erro ao carregar dados do jogador"));
-        }
-
-        final roundId = snapshot.data![0] as String;
-        final userId = snapshot.data![1] as String;
-
-        return Scaffold(
-          body: Center(
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  DiceButton(userId: userId),
-                  const SizedBox(width: 60),
-                  const ButtonDiscard(),
-                  const SizedBox(width: 60),
-                  const ButtonPickup(),
-                  const SizedBox(width: 60),
-                  const ChatButton(),
-                  const SizedBox(width: 60),
-                  const SelecaoJogadorButton(),
-                  const SizedBox(width: 60),
-                  const PlayerSelectionButton(),
-                ],
-              ),
-            ),
-          ),
-        );
-      },
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: const [
+          DiceButton(),
+          SizedBox(width: 60),
+          ButtonDiscard(),
+          SizedBox(width: 60),
+          ButtonPickup(),
+          SizedBox(width: 60),
+          ChatButton(),
+          SizedBox(width: 60),
+          SelecaoJogadorButton(),
+          SizedBox(width: 60),
+          PlayerSelectionButton(),
+        ],
+      ),
     );
   }
 }
