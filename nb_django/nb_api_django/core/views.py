@@ -16,6 +16,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from django.db import transaction
+from rest_framework.decorators import api_view
 
 
 def populate_baralho_cadastro(request):
@@ -751,13 +752,6 @@ class PopularTabuleiroView(View):
         )
 
 
-from rest_framework.views import APIView
-from rest_framework.response import Response
-from rest_framework import status
-from django.db import transaction
-from .models import Jogador, TabuleiroCadastro
-
-
 class RolarDadoView(APIView):
     """
     Move o jogador no tabuleiro conforme o valor do dado.
@@ -825,3 +819,96 @@ class RolarDadoView(APIView):
                 {"error": str(e)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
+
+
+@api_view(["POST"])
+def executar_acao_casa(request):
+    try:
+        id_jogador = request.data.get("id_jogador")
+        id_casa = request.data.get("id_casa")
+
+        if not id_jogador or not id_casa:
+            return Response({"erro": "id_jogador e id_casa são obrigatórios."}, status=400)
+
+        # Busca jogador e casa
+        jogador = Jogador.objects.get(id_jogador=id_jogador)
+        casa = TabuleiroCadastro.objects.get(id_casa=id_casa)
+        acao = casa.acao
+
+        # Apenas para ações 2, 3, 4, 5
+        if acao.id_acao not in [2, 3, 4, 5]:
+            return Response({"erro": "Ação não distribuível automaticamente."}, status=400)
+
+        # Busca controle da partida (assumindo 1 partida ativa)
+        controle = ControlePartida.objects.filter(id_partida=jogador.id_partida).first()
+        if not controle:
+            return Response({"erro": "Controle da partida não encontrado."}, status=400)
+
+        # Lista de cartas já entregues (jogadores + descartadas)
+        entregues_ids = []
+        if controle.cartas_jogadores:
+            entregues_ids += json.loads(controle.cartas_jogadores)
+        if controle.cartas_descartadas:
+            entregues_ids += json.loads(controle.cartas_descartadas)
+
+        # Busca ou cria baralho do jogador
+        baralho, _ = Baralho.objects.get_or_create(
+            id_jogador=jogador,
+            id_partida=jogador.id_partida
+        )
+        lista_cartas_jogador = json.loads(baralho.lista_de_cartas) if baralho.lista_de_cartas else []
+
+        cartas_adicionadas = []
+
+        # Função interna para buscar carta disponível do tipo
+        def buscar_carta_disponivel(tipo):
+            todas_cartas = BaralhoCadastro.objects.filter(tipo_carta=tipo)
+            for c in todas_cartas:
+                if c.id_carta not in entregues_ids:
+                    entregues_ids.append(c.id_carta)  # marca como entregue
+                    return c
+            return None
+
+        # Define tipos de cartas a distribuir conforme id_acao
+        if acao.id_acao == 2:
+            tipos_a_distribuir = ["final"]
+        elif acao.id_acao == 3:
+            tipos_a_distribuir = ["meio"]
+        elif acao.id_acao == 4:
+            tipos_a_distribuir = ["inicio"]
+        elif acao.id_acao == 5:
+            tipos_a_distribuir = ["inicio", "meio", "final"]
+
+        # Distribui cartas disponíveis
+        for tipo in tipos_a_distribuir:
+            carta = buscar_carta_disponivel(tipo)
+            if carta:
+                lista_cartas_jogador.append(carta.id_carta)
+                cartas_adicionadas.append(carta)
+                print(f"Adicionada carta {carta.nome_carta} ({carta.tipo_carta}) ao jogador {jogador.nome_jogador}")
+            else:
+                print(f"Nenhuma carta disponível do tipo {tipo}")
+
+        # Salva lista de cartas do jogador
+        baralho.lista_de_cartas = json.dumps(lista_cartas_jogador)
+        baralho.save()
+
+        # Atualiza controle global de cartas entregues
+        controle.cartas_jogadores = json.dumps(entregues_ids)
+        controle.save()
+
+        return Response({
+            "id_jogador": jogador.id_jogador,
+            "nova_posicao": {"id_casa": casa.id_casa, "nome_casa": casa.nome_casa},
+            "cartas_adicionadas": [
+                {"id_carta": c.id_carta, "nome": c.nome_carta, "tipo": c.tipo_carta}
+                for c in cartas_adicionadas
+            ]
+        })
+
+    except Jogador.DoesNotExist:
+        return Response({"erro": "Jogador não encontrado."}, status=404)
+    except TabuleiroCadastro.DoesNotExist:
+        return Response({"erro": "Casa do tabuleiro não encontrada."}, status=404)
+    except Exception as e:
+        return Response({"erro": str(e)}, status=500)
