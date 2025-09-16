@@ -1,7 +1,7 @@
 // ignore_for_file: prefer_const_constructors, sort_child_properties_last
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:nb_game/model/user_model_base.dart';
+import 'package:nb_game/model/game_request_model.dart'; // Jogador e Carta
 import 'package:nb_game/provider/user_provider.dart';
 import 'package:nb_game/widgets/build_card.dart';
 import 'package:nb_game/widgets/get_color.dart';
@@ -30,15 +30,24 @@ class _CardConstructorState extends ConsumerState<CardConstructor> {
 
   @override
   Widget build(BuildContext context) {
-    final apiAsyncValue = ref.watch(userAndDeckProvider);
+    final jogadorAsync = ref.watch(jogadorProvider);
 
-    return apiAsyncValue.when(
-      data: (gameResponse) {
-        List<CardDeck> cardDecks = gameResponse.cardDeck;
+    return jogadorAsync.when(
+      data: (jogador) {
+        List<Carta> cartas = jogador.cartas;
+
+        if (cartas.isEmpty) {
+          return Center(
+            child: Text(
+              "Nenhuma carta encontrada",
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+          );
+        }
 
         return PageView.builder(
           controller: _pageController,
-          itemCount: cardDecks.length,
+          itemCount: cartas.length,
           itemBuilder: (context, index) {
             return AnimatedBuilder(
               animation: _pageController,
@@ -59,7 +68,7 @@ class _CardConstructorState extends ConsumerState<CardConstructor> {
                 padding: const EdgeInsets.symmetric(horizontal: 8.0),
                 child: buildCard(
                   title: Text(
-                    'Título Carta: ${cardDecks[index].title}',
+                    cartas[index].nomeCarta,
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       fontSize: 14,
@@ -68,11 +77,11 @@ class _CardConstructorState extends ConsumerState<CardConstructor> {
                     ),
                   ),
                   description: Text(
-                    'Descrição: ${cardDecks[index].description}',
+                    cartas[index].descricaoCarta,
                     textAlign: TextAlign.justify,
                     style: TextStyle(fontSize: 16),
                   ),
-                  color: getColorFromString('azul'),
+                  color: getColorFromString(cartas[index].corCarta),
                 ),
               ),
             );

@@ -8,7 +8,6 @@ class NameRoomForm extends StatefulWidget {
   const NameRoomForm({super.key});
 
   @override
-  // ignore: library_private_types_in_public_api
   _NameRoomFormState createState() => _NameRoomFormState();
 }
 
@@ -16,7 +15,7 @@ class _NameRoomFormState extends State<NameRoomForm> {
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
   final _roomIdController = TextEditingController();
-  final _pinController = TextEditingController();
+  final _colorController = TextEditingController();
 
   @override
   Widget build(BuildContext context) {
@@ -30,7 +29,6 @@ class _NameRoomFormState extends State<NameRoomForm> {
           key: _formKey,
           child: Column(
             children: [
-              // Campo de Nome
               TextFormField(
                 controller: _nameController,
                 decoration: InputDecoration(
@@ -46,9 +44,9 @@ class _NameRoomFormState extends State<NameRoomForm> {
               ),
               SizedBox(height: 16),
               TextFormField(
-                controller: _pinController,
+                controller: _colorController,
                 decoration: InputDecoration(
-                  labelText: 'Cor',
+                  labelText: 'Cor do Peão',
                   border: OutlineInputBorder(),
                 ),
                 validator: (value) {
@@ -65,33 +63,31 @@ class _NameRoomFormState extends State<NameRoomForm> {
                   labelText: 'ID da Sala (opcional)',
                   border: OutlineInputBorder(),
                 ),
+                keyboardType: TextInputType.number,
               ),
               SizedBox(height: 16),
               ElevatedButton(
                 onPressed: () {
                   if (_formKey.currentState?.validate() ?? false) {
-                    final name = _nameController.text;
-                    final roomId = _roomIdController.text.isNotEmpty
-                        ? _roomIdController.text
-                        : null;
-                    final pinColor = _pinController.text;
-                    postAndStoreData(context,
-                            name: name,
-                            birthDate: "2002-04-20",
-                            gamePin: pinColor,
-                            roundId: roomId)
-                        .then((_) {
-                      // Navegar para a página de sucesso
+                    final nomeJogador = _nameController.text;
+                    final corJogador = _colorController.text;
+                    final idPartida = _roomIdController.text.isNotEmpty
+                        ? int.tryParse(_roomIdController.text)
+                        : null; // null se vazio
+
+                    postAndStoreData(
+                      context,
+                      nomeJogador: nomeJogador,
+                      corJogador: corJogador,
+                      idPartida: idPartida, // envia null se não informado
+                    ).then((_) {
                       Navigator.push(
                         context,
                         MaterialPageRoute(builder: (context) => GamePage()),
                       );
                     }).catchError((error) {
-                      // Tratamento de erro
                       ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text('Falha ao enviar dados: $error'),
-                        ),
+                        SnackBar(content: Text('Falha ao enviar dados: $error')),
                       );
                     });
                   }
@@ -109,7 +105,7 @@ class _NameRoomFormState extends State<NameRoomForm> {
   void dispose() {
     _nameController.dispose();
     _roomIdController.dispose();
-    _pinController.dispose();
+    _colorController.dispose();
     super.dispose();
   }
 }

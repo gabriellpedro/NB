@@ -1,13 +1,12 @@
 import 'dart:math';
+import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:nb_game/provider/user_provider.dart';
-import 'package:nb_game/storage/storage_preferences.dart';
+import 'package:http/http.dart' as http;
 
 class DiceButton extends StatefulWidget {
-  final String roundId;
   final String userId;
 
-  const DiceButton({super.key, required this.roundId, required this.userId});
+  const DiceButton({super.key, required this.userId});
 
   @override
   _DiceButtonState createState() => _DiceButtonState();
@@ -16,7 +15,7 @@ class DiceButton extends StatefulWidget {
 class _DiceButtonState extends State<DiceButton> {
   int? diceValue;
 
-  void _rollDice() async {
+  Future<void> _rollDice() async {
     final random = Random();
     final result = random.nextInt(6) + 1;
 
@@ -24,21 +23,55 @@ class _DiceButtonState extends State<DiceButton> {
       diceValue = result;
     });
 
-    // Salvar no SharedPreferences
-    final localStorageService = LocalStorageService();
-    await localStorageService.storeRoundAndUserId(widget.roundId, widget.userId);
-    await localStorageService.storeDiceValue(result);
+    // Fazer POST na API
+    final apiResponse = await _sendDiceValue(widget.userId, result);
 
-    // Abrir o popup
-    _showDiceDialog(result);
+    // Primeiro popup: número do dado
+    await _showDiceDialog(result);
+
+    // Segundo popup: ação do jogador (nome_casa)
+    if (apiResponse != null) {
+      final novaCasa =
+          apiResponse['nova_posicao']?['nome_casa'] ?? 'Nenhuma ação';
+      await _showActionDialog(novaCasa);
+    }
   }
 
-  void _showDiceDialog(int result) {
-    showDialog(
+  Future<Map<String, dynamic>?> _sendDiceValue(
+      String userId, int diceValue) async {
+    final url = Uri.parse(
+        'http://127.0.0.1:8000/rolar-dado/'); // ⚠️ ajuste conforme sua URL
+    final body = jsonEncode({
+      "id_jogador": userId,
+      "valor_dado": diceValue,
+    });
+
+    try {
+      final response = await http.post(
+        url,
+        headers: {"Content-Type": "application/json"},
+        body: body,
+      );
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      } else {
+        print('Erro ao enviar dado: ${response.statusCode} - ${response.body}');
+        return null;
+      }
+    } catch (e) {
+      print('Erro na requisição: $e');
+      return null;
+    }
+  }
+
+  Future<void> _showDiceDialog(int result) {
+    return showDialog(
       context: context,
       builder: (context) {
         return Dialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           child: Container(
             padding: const EdgeInsets.all(16),
             child: Column(
@@ -46,32 +79,43 @@ class _DiceButtonState extends State<DiceButton> {
               children: [
                 Text(
                   "Você tirou: $result",
-                  style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+                  style: const TextStyle(
+                      fontSize: 22, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 20),
                 ElevatedButton(
-                  onPressed: () async {
-                    final localStorageService = LocalStorageService();
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text("Ok"),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
 
-                    final roundId = await localStorageService.retrieveRoundId();
-                    final userId = await localStorageService.retrieveUserId();
-                    final diceValue = await localStorageService.retrieveDiceValue();
-
-                    if (roundId != null && userId != null && diceValue != null) {
-                      await sendGameData(
-                        roundId: roundId,
-                        userId: userId,
-                        diceNumber: diceValue,
-                        choices: [],
-                        wantOut: false,
-                      );
-                    } else {
-                      print('Dados insuficientes para enviar.');
-                    }
-
-                    Navigator.of(context).pop(); // Fecha o popup
-                  },
-                  child: const Text("Fechar"),
+  Future<void> _showActionDialog(String action) {
+    return showDialog(
+      context: context,
+      builder: (context) {
+        return Dialog(
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          child: Container(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  action,
+                  style: const TextStyle(fontSize: 20),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 20),
+                ElevatedButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text("Ok"),
                 ),
               ],
             ),
