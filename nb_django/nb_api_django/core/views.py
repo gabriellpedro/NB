@@ -755,12 +755,12 @@ class PopularTabuleiroView(View):
 class RolarDadoView(APIView):
     """
     Move o jogador no tabuleiro conforme o valor do dado.
+    Retorna também o id_acao da casa para facilitar lógica no cliente.
     """
 
     @transaction.atomic
     def post(self, request):
         try:
-            # Valor do dado (1 a 6)
             valor_dado = int(request.data.get("valor_dado", 0))
             id_jogador = request.data.get("id_jogador")
 
@@ -774,7 +774,6 @@ class RolarDadoView(APIView):
 
             jogador = Jogador.objects.get(id_jogador=id_jogador)
 
-            # Última casa cadastrada
             ultima_casa = TabuleiroCadastro.objects.order_by("-numero_casa").first()
             if not ultima_casa:
                 return Response(
@@ -782,28 +781,26 @@ class RolarDadoView(APIView):
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 )
 
-            # Caso o jogador ainda não tenha posição, começa do início (casa 1)
             posicao_atual = jogador.id_casa or 1
             nova_posicao = posicao_atual + valor_dado
 
-            # Se ultrapassou a última casa, reinicia contando o excedente
             if nova_posicao > ultima_casa.numero_casa:
                 excedente = nova_posicao - ultima_casa.numero_casa
                 nova_posicao = excedente if excedente > 0 else 1
 
-            # Atualiza o jogador
             jogador.id_casa = nova_posicao
             jogador.save()
 
-            # Recupera o nome da nova casa
             casa = TabuleiroCadastro.objects.get(numero_casa=nova_posicao)
 
+            # Inclui id_acao no retorno
             return Response(
                 {
                     "message": f"Jogador {jogador.nome_jogador} moveu {valor_dado} casas.",
                     "nova_posicao": {
                         "id_casa": jogador.id_casa,
                         "nome_casa": casa.nome_casa,
+                        "id_acao": casa.acao.id_acao,  # <-- aqui está o id_acao
                     },
                 },
                 status=status.HTTP_200_OK,
@@ -828,7 +825,9 @@ def executar_acao_casa(request):
         id_casa = request.data.get("id_casa")
 
         if not id_jogador or not id_casa:
-            return Response({"erro": "id_jogador e id_casa são obrigatórios."}, status=400)
+            return Response(
+                {"erro": "id_jogador e id_casa são obrigatórios."}, status=400
+            )
 
         # Busca jogador e casa
         jogador = Jogador.objects.get(id_jogador=id_jogador)
@@ -837,7 +836,9 @@ def executar_acao_casa(request):
 
         # Apenas para ações 2, 3, 4, 5
         if acao.id_acao not in [2, 3, 4, 5]:
-            return Response({"erro": "Ação não distribuível automaticamente."}, status=400)
+            return Response(
+                {"erro": "Ação não distribuível automaticamente."}, status=400
+            )
 
         # Busca controle da partida (assumindo 1 partida ativa)
         controle = ControlePartida.objects.filter(id_partida=jogador.id_partida).first()
@@ -853,10 +854,11 @@ def executar_acao_casa(request):
 
         # Busca ou cria baralho do jogador
         baralho, _ = Baralho.objects.get_or_create(
-            id_jogador=jogador,
-            id_partida=jogador.id_partida
+            id_jogador=jogador, id_partida=jogador.id_partida
         )
-        lista_cartas_jogador = json.loads(baralho.lista_de_cartas) if baralho.lista_de_cartas else []
+        lista_cartas_jogador = (
+            json.loads(baralho.lista_de_cartas) if baralho.lista_de_cartas else []
+        )
 
         cartas_adicionadas = []
 
@@ -885,7 +887,9 @@ def executar_acao_casa(request):
             if carta:
                 lista_cartas_jogador.append(carta.id_carta)
                 cartas_adicionadas.append(carta)
-                print(f"Adicionada carta {carta.nome_carta} ({carta.tipo_carta}) ao jogador {jogador.nome_jogador}")
+                print(
+                    f"Adicionada carta {carta.nome_carta} ({carta.tipo_carta}) ao jogador {jogador.nome_jogador}"
+                )
             else:
                 print(f"Nenhuma carta disponível do tipo {tipo}")
 
@@ -897,14 +901,16 @@ def executar_acao_casa(request):
         controle.cartas_jogadores = json.dumps(entregues_ids)
         controle.save()
 
-        return Response({
-            "id_jogador": jogador.id_jogador,
-            "nova_posicao": {"id_casa": casa.id_casa, "nome_casa": casa.nome_casa},
-            "cartas_adicionadas": [
-                {"id_carta": c.id_carta, "nome": c.nome_carta, "tipo": c.tipo_carta}
-                for c in cartas_adicionadas
-            ]
-        })
+        return Response(
+            {
+                "id_jogador": jogador.id_jogador,
+                "nova_posicao": {"id_casa": casa.id_casa, "nome_casa": casa.nome_casa},
+                "cartas_adicionadas": [
+                    {"id_carta": c.id_carta, "nome": c.nome_carta, "tipo": c.tipo_carta}
+                    for c in cartas_adicionadas
+                ],
+            }
+        )
 
     except Jogador.DoesNotExist:
         return Response({"erro": "Jogador não encontrado."}, status=404)
