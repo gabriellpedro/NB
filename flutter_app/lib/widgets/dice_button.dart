@@ -1,3 +1,5 @@
+// ignore_for_file: unused_local_variable, unused_result, use_build_context_synchronously
+
 import 'dart:math';
 import 'dart:convert';
 import 'package:flutter/material.dart';
@@ -30,7 +32,8 @@ class DiceButton extends ConsumerWidget {
             context: context,
             builder: (_) => Dialog(
               shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16)),
+                borderRadius: BorderRadius.circular(16),
+              ),
               child: Padding(
                 padding: const EdgeInsets.all(16),
                 child: Column(
@@ -58,11 +61,10 @@ class DiceButton extends ConsumerWidget {
           );
 
           if (response.statusCode == 200) {
-            final jsonResp = jsonDecode(response.body);
+            final jsonResp = jsonDecode(utf8.decode(response.bodyBytes));
             final novaPosicao = jsonResp['nova_posicao'];
             final idCasa = novaPosicao['id_casa'];
-            final idAcao =
-                novaPosicao['id_acao']; // <-- pegando direto do retorno da API
+            final idAcao = novaPosicao['id_acao'];
 
             // Atualiza jogador localmente
             final updatedJogador = jogador.copyWith(
@@ -95,37 +97,76 @@ class DiceButton extends ConsumerWidget {
               ),
             );
 
-            // Popup 3: se a casa for de ação que distribui cartas (id_acao 2,3,4,5)
-            if ([2, 3, 4, 5].contains(idAcao)) {
+            // Popup 3: ações que distribuem ou removem cartas
+            if ([2, 3, 4, 5, 23, 24, 25].contains(idAcao)) {
               final acaoResponse = await http.post(
                 Uri.parse('http://127.0.0.1:8000/executar-acao-casa/'),
                 headers: {'Content-Type': 'application/json'},
                 body: jsonEncode(
-                    {'id_jogador': jogador.idJogador, 'id_casa': idCasa}),
+                  {'id_jogador': jogador.idJogador, 'id_casa': idCasa},
+                ),
               );
 
               if (acaoResponse.statusCode == 200) {
-                final acaoJson = jsonDecode(acaoResponse.body);
-                final cartas = acaoJson['cartas_adicionadas'] as List<dynamic>;
+                final acaoJson = jsonDecode(utf8.decode(acaoResponse.bodyBytes));
 
-                for (var carta in cartas) {
+                final List<dynamic> cartasAdicionadas =
+                    acaoJson['cartas_adicionadas'] ?? [];
+                final List<dynamic> cartasRemovidas =
+                    acaoJson['cartas_removidas'] ?? [];
+
+                if (cartasAdicionadas.isNotEmpty ||
+                    cartasRemovidas.isNotEmpty) {
                   await showDialog(
                     context: context,
                     builder: (_) => Dialog(
                       shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16)),
+                        borderRadius: BorderRadius.circular(16),
+                      ),
                       child: Padding(
                         padding: const EdgeInsets.all(16),
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Text("Carta recebida: ${carta['nome']}",
-                                textAlign: TextAlign.center,
-                                style: const TextStyle(fontSize: 20)),
+                            const Text(
+                              "Resultado da ação",
+                              style: TextStyle(
+                                  fontSize: 22, fontWeight: FontWeight.bold),
+                            ),
                             const SizedBox(height: 20),
+
+                            // Lista de cartas adicionadas e removidas
+                            ConstrainedBox(
+                              constraints:
+                                  const BoxConstraints(maxHeight: 300),
+                              child: ListView(
+                                shrinkWrap: true,
+                                children: [
+                                  if (cartasAdicionadas.isNotEmpty)
+                                    ...cartasAdicionadas.map((carta) => ListTile(
+                                          leading: const Icon(Icons.add,
+                                              color: Colors.green),
+                                          title: Text(carta['nome']),
+                                          subtitle:
+                                              const Text("Carta recebida"),
+                                        )),
+                                  if (cartasRemovidas.isNotEmpty)
+                                    ...cartasRemovidas.map((carta) => ListTile(
+                                          leading: const Icon(Icons.remove,
+                                              color: Colors.red),
+                                          title: Text(carta['nome']),
+                                          subtitle:
+                                              const Text("Carta perdida"),
+                                        )),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 20),
+
                             ElevatedButton(
-                                onPressed: () => Navigator.of(context).pop(),
-                                child: const Text("Ok")),
+                              onPressed: () => Navigator.of(context).pop(),
+                              child: const Text("Ok"),
+                            ),
                           ],
                         ),
                       ),
@@ -133,7 +174,7 @@ class DiceButton extends ConsumerWidget {
                   );
                 }
 
-                // Atualiza jogador após receber cartas
+                // Atualiza jogador após ação
                 ref.refresh(jogadorProvider);
               }
             }
