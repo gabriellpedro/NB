@@ -39,9 +39,11 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    "corsheaders",
 ]
 
 MIDDLEWARE = [
+    'corsheaders.middleware.CorsMiddleware', 
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -50,6 +52,16 @@ MIDDLEWARE = [
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
+
+CORS_ALLOW_ALL_ORIGINS = True
+
+# MIGRATION_MODULES = {
+#     'contenttypes': None,
+#     'auth': None,
+#     'admin': None,
+#     'sessions': None,
+#     'django_migrations' : None
+# }
 
 ROOT_URLCONF = "nb_api_django.urls"
 
@@ -74,23 +86,23 @@ WSGI_APPLICATION = "nb_api_django.wsgi.application"
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
-# DATABASES = {
-#     "default": {
-#         "ENGINE": "django.db.backends.sqlite3",
-#         "NAME": BASE_DIR / "db.sqlite3",
-#     }
-# }
-
 DATABASES = {
-        'default': {
-            'ENGINE': 'djongo',
-            'NAME': 'NB',
-            'ENFORCE_SCHEMA': False,
-            'CLIENT': {
-                'host': 'mongodb+srv://gabrielpedro47_db_user:zzW46na8nMRLwbR2@nbcluster.pfstr7q.mongodb.net/?retryWrites=true&w=majority&appName=nbcluster'
-            }  
-        }
+    "default": {
+        "ENGINE": "django.db.backends.sqlite3",
+        "NAME": BASE_DIR / "banco_nb.sqlite3",
+    }
 }
+
+# DATABASES = {
+#         'default': {
+#             'ENGINE': 'djongo',
+#             'NAME': 'NB',
+#             'ENFORCE_SCHEMA': False,
+#             'CLIENT': {
+#                 'host': 'mongodb+srv://gabrielpedro47_db_user:zzW46na8nMRLwbR2@nbcluster.pfstr7q.mongodb.net/?retryWrites=true&w=majority&appName=nbcluster'
+#             }  
+#         }
+# }
 
 
 # Password validation

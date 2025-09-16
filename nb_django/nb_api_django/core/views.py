@@ -2,7 +2,16 @@ import json
 import random
 from django.shortcuts import render
 from django.http import JsonResponse
-from .models import Baralho, BaralhoCadastro, ControlePartida, Jogador, Partida
+from django.views import View
+from .models import (
+    AcaoCadastro,
+    Baralho,
+    BaralhoCadastro,
+    ControlePartida,
+    Jogador,
+    Partida,
+    TabuleiroCadastro,
+)
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
@@ -387,8 +396,10 @@ class CriarJogadorView(APIView):
         id_partida = request.data.get("id_partida")
 
         if not nome_jogador or not cor_jogador:
-            return Response({"error": "Nome e Cor do jogador são obrigatórios."},
-                            status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"error": "Nome e Cor do jogador são obrigatórios."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         # Se não veio id_partida → cria nova partida
         if not id_partida:
@@ -397,20 +408,34 @@ class CriarJogadorView(APIView):
             try:
                 partida = Partida.objects.get(id_partida=id_partida)
             except Partida.DoesNotExist:
-                return Response({"error": "Partida não encontrada."},
-                                status=status.HTTP_404_NOT_FOUND)
+                return Response(
+                    {"error": "Partida não encontrada."},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
 
         # Verifica se já existe jogador com a mesma cor nesta partida
         cor_field = f"id_jogador_{cor_jogador.lower()}"
         if hasattr(partida, cor_field) and getattr(partida, cor_field):
-            return Response({"error": f"A cor {cor_jogador} já está ocupada nesta partida."},
-                            status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"error": f"A cor {cor_jogador} já está ocupada nesta partida."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
-        # Cria o jogador
+        # 🔹 Busca a Casa 1 do Tabuleiro
+        try:
+            casa_inicial = TabuleiroCadastro.objects.get(numero_casa=1)
+        except TabuleiroCadastro.DoesNotExist:
+            return Response(
+                {"error": "Casa inicial (número 1) não encontrada no tabuleiro."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        # Cria o jogador já posicionado na casa 1
         jogador = Jogador.objects.create(
             nome_jogador=nome_jogador,
             cor_jogador=cor_jogador,
-            id_partida=partida
+            id_partida=partida,
+            id_casa=casa_inicial.id_casa,  # ✅ começa na Casa 1
         )
 
         # Atualiza a partida com o jogador na cor correta
@@ -418,41 +443,62 @@ class CriarJogadorView(APIView):
             setattr(partida, cor_field, jogador.id_jogador)
             partida.save()
 
+        # Cria o baralho inicial do jogador
         criar_baralho_para_jogador(jogador, partida)
 
-        return Response({
-            "message": "Jogador criado com sucesso!",
-            "jogador": {
-                "id_jogador": jogador.id_jogador,
-                "nome_jogador": jogador.nome_jogador,
-                "cor_jogador": jogador.cor_jogador,
-                "id_partida": partida.id_partida,
-            }
-        }, status=status.HTTP_201_CREATED)
+        return Response(
+            {
+                "message": "Jogador criado com sucesso!",
+                "jogador": {
+                    "id_jogador": jogador.id_jogador,
+                    "nome_jogador": jogador.nome_jogador,
+                    "cor_jogador": jogador.cor_jogador,
+                    "id_partida": partida.id_partida,
+                    "id_casa": jogador.id_casa,
+                },
+            },
+            status=status.HTTP_201_CREATED,
+        )
+
 
 def criar_baralho_para_jogador(jogador, partida, quantidade=2):
-    """
-    Cria um baralho para o jogador, vinculando-o à partida e distribuindo cartas.
-    """
     # Recupera ou cria um baralho para o jogador
     baralho = Baralho.objects.create(
         id_jogador=jogador,
         id_partida=partida,
     )
 
+    # Recupera controle da partida
     controle, _ = ControlePartida.objects.get_or_create(id_partida=partida)
 
-    # Cartas já em circulação (globais)
+    # Cartas já em circulação (em baralhos de jogadores)
     cartas_em_uso = json.loads(controle.cartas_jogadores or "[]")
 
-    # Pega cartas disponíveis do cadastro
+    # Cartas já descartadas (caso exista esse controle)
+    cartas_descartadas = json.loads(controle.cartas_descartadas or "[]")
+
+    # Todas as cartas disponíveis no cadastro
     todas_cartas = list(BaralhoCadastro.objects.values_list("id_carta", flat=True))
-    cartas_disponiveis = list(set(todas_cartas) - set(cartas_em_uso))
+
+    # Filtra as cartas disponíveis: não podem estar em uso nem descartadas
+    cartas_disponiveis = list(
+        set(todas_cartas) - set(cartas_em_uso) - set(cartas_descartadas)
+    )
+
+    # Se houver menos cartas disponíveis que a quantidade, ajusta para o máximo possível
+    if len(cartas_disponiveis) < quantidade:
+        quantidade = len(cartas_disponiveis)
+
+    # Se não houver cartas disponíveis, retorna baralho vazio
+    if quantidade <= 0:
+        baralho.lista_de_cartas = json.dumps([])
+        baralho.save()
+        return baralho
 
     # Sorteia as cartas
     cartas_sorteadas = random.sample(cartas_disponiveis, quantidade)
 
-    # Vincula as cartas ao baralho do jogador
+    # Salva as cartas no baralho
     baralho.lista_de_cartas = json.dumps(cartas_sorteadas)
     baralho.save()
 
@@ -460,11 +506,12 @@ def criar_baralho_para_jogador(jogador, partida, quantidade=2):
     jogador.id_baralho = baralho.id_baralho
     jogador.save()
 
-    # Atualiza a partida para registrar essas cartas como em circulação
+    # Atualiza o controle da partida com as cartas em uso
     controle.cartas_jogadores = json.dumps(cartas_em_uso + cartas_sorteadas)
     controle.save()
 
     return baralho
+
 
 class JogadorDetalhesView(APIView):
     """
@@ -473,13 +520,16 @@ class JogadorDetalhesView(APIView):
     - Nome do jogador
     - Cartas do baralho (detalhes vindos de BaralhoCadastro)
     - ID da casa
+    - Nome da casa (TabuleiroCadastro)
     """
 
     def get(self, request, id_jogador):
         try:
             jogador = Jogador.objects.get(id_jogador=id_jogador)
         except Jogador.DoesNotExist:
-            return Response({"error": "Jogador não encontrado."}, status=status.HTTP_404_NOT_FOUND)
+            return Response(
+                {"error": "Jogador não encontrado."}, status=status.HTTP_404_NOT_FOUND
+            )
 
         # ID da partida
         partida_id = jogador.id_partida.id_partida if jogador.id_partida else None
@@ -494,16 +544,27 @@ class JogadorDetalhesView(APIView):
                 # Pega os detalhes das cartas cadastradas
                 cartas = BaralhoCadastro.objects.filter(id_carta__in=lista_ids)
                 for carta in cartas:
-                    cartas_detalhes.append({
-                        "id_carta": carta.id_carta,
-                        "nome_carta": carta.nome_carta,
-                        "tipo_carta": carta.tipo_carta,
-                        "cor_carta": carta.cor_carta,
-                        "descricao_carta": carta.descricao_carta,
-                    })
+                    cartas_detalhes.append(
+                        {
+                            "id_carta": carta.id_carta,
+                            "nome_carta": carta.nome_carta,
+                            "tipo_carta": carta.tipo_carta,
+                            "cor_carta": carta.cor_carta,
+                            "descricao_carta": carta.descricao_carta,
+                        }
+                    )
 
             except Baralho.DoesNotExist:
                 cartas_detalhes = []
+
+        # Recupera o nome da casa
+        nome_casa = None
+        if jogador.id_casa:
+            try:
+                casa = TabuleiroCadastro.objects.get(id_casa=jogador.id_casa)
+                nome_casa = casa.nome_casa
+            except TabuleiroCadastro.DoesNotExist:
+                nome_casa = None
 
         # Monta a resposta
         data = {
@@ -512,7 +573,255 @@ class JogadorDetalhesView(APIView):
             "nome_jogador": jogador.nome_jogador,
             "cor_jogador": jogador.cor_jogador,
             "id_casa": jogador.id_casa,
+            "nome_casa": nome_casa,
             "cartas": cartas_detalhes,
         }
 
         return Response(data, status=status.HTTP_200_OK)
+
+
+class PopularTabuleiroView(View):
+    def get(self, request):
+        # 🔹 Se já houver dados no tabuleiro ou ações, não popula de novo
+        if AcaoCadastro.objects.exists() or TabuleiroCadastro.objects.exists():
+            return JsonResponse(
+                {"status": "Ops!", "msg": "O tabuleiro já foi populado anteriormente."},
+                status=400,
+            )
+
+        # 1. Ações únicas
+        acoes = [
+            ("Início", None, "Casa inicial do jogo"),
+            ("Ganhar carta FIM", "FIM", "Jogador ganha uma carta do tipo FIM"),
+            ("Ganhar carta MEIO", "MEIO", "Jogador ganha uma carta do tipo MEIO"),
+            ("Ganhar carta INICIO", "INICIO", "Jogador ganha uma carta do tipo INÍCIO"),
+            (
+                "Ganhar carta INICIO-MEIO-FIM",
+                None,
+                "Jogador ganha uma carta de cada tipo",
+            ),
+            (
+                "Troca cartas frente",
+                None,
+                "Troque todas as cartas com o jogador à frente",
+            ),
+            (
+                "Troca cartas direita",
+                None,
+                "Troque todas as cartas com o jogador à direita",
+            ),
+            (
+                "Troca cartas esquerda",
+                None,
+                "Troque todas as cartas com o jogador à esquerda",
+            ),
+            ("Doe vez ou perca carta", None, "Doe a vez a alguém ou perca uma carta"),
+            ("Doe 1 carta", None, "Doe uma carta a alguém de sua escolha"),
+            ("Doe vez", None, "Doe a vez a alguém de sua escolha"),
+            ("Desafio elogio", None, "Elogie alguém ou perca uma carta"),
+            ("Roubar carta esquerda", None, "Roube uma carta do jogador à esquerda"),
+            ("Roubar carta direita", None, "Roube uma carta do jogador à direita"),
+            ("Roubar carta qualquer", None, "Roube uma carta de qualquer jogador"),
+            (
+                "Entregar carta frente",
+                None,
+                "Pegue uma carta sem ver e entregue ao jogador à frente",
+            ),
+            (
+                "Entregar carta próximo",
+                None,
+                "Pegue uma carta sem ver e entregue ao próximo jogador",
+            ),
+            (
+                "Ver baralho esquerda",
+                None,
+                "Veja o baralho da esquerda e troque 1 carta",
+            ),
+            ("Ver baralho direita", None, "Veja o baralho da direita e troque 1 carta"),
+            ("Avançar casas", None, "Avance 2 casas"),
+            ("Voltar casas", None, "Volte 2 casas"),
+            (
+                "Voltar início + carta FIM",
+                "FIM",
+                "Volte ao início e ganhe uma carta FIM",
+            ),
+            ("Perder carta MEIO", "MEIO", "Perde uma carta MEIO"),
+            ("Perder carta INICIO", "INICIO", "Perde uma carta INÍCIO"),
+            ("Perder carta FINAL", "FIM", "Perde uma carta FINAL"),
+            (
+                "Perder carta FINAL condicional",
+                "FIM",
+                "Perde sua carta FINAL se não perdeu a vez",
+            ),
+            ("Perder vez", None, "Jogador perde sua vez"),
+            ("Perder rodadas", None, "Jogador fica 2 rodadas sem jogar"),
+            ("Jogue novamente", None, "Jogue novamente"),
+        ]
+
+        acao_objs = {}
+        for nome, tipo, desc in acoes:
+            obj = AcaoCadastro.objects.create(
+                nome_acao=nome,
+                tipo_carta=tipo,
+                descricao=desc,
+            )
+            acao_objs[nome] = obj
+
+        # 2. Casas mapeadas
+        casas = [
+            (1, "Início", "Início"),
+            (2, "Ganhe 1 carta de FIM", "Ganhar carta FIM"),
+            (3, "Sorte! Jogue novamente", "Jogue novamente"),
+            (4, "Troque suas cartas com o jogador à frente", "Troca cartas frente"),
+            (5, "Doe a sua vez a alguém ou perca 1 carta", "Doe vez ou perca carta"),
+            (6, "Sorte! Ganhe 1 carta de MEIO", "Ganhar carta MEIO"),
+            (7, "Avance 2 casas", "Avançar casas"),
+            (8, "Sorte! Ganhe uma carta de MEIO", "Ganhar carta MEIO"),
+            (9, "Troque suas cartas com o jogador à direita", "Troca cartas direita"),
+            (10, "Volte 2 casas", "Voltar casas"),
+            (11, "Roube 1 carta do jogador à esquerda", "Roubar carta esquerda"),
+            (12, "Azar! Perca uma carta de MEIO", "Perder carta MEIO"),
+            (13, "Sorte! Jogue novamente", "Jogue novamente"),
+            (14, "Doe 1 carta a alguém de sua escolha", "Doe 1 carta"),
+            (15, "Roube 1 carta de um jogador", "Roubar carta qualquer"),
+            (
+                16,
+                "Volte ao início e pegue uma carta de FINAL",
+                "Voltar início + carta FIM",
+            ),
+            (
+                17,
+                "Veja o baralho do jogador à esquerda e troque 1 carta",
+                "Ver baralho esquerda",
+            ),
+            (18, "Fique 2 rodadas sem jogar", "Perder rodadas"),
+            (
+                19,
+                "Sorte! Pegue 1 carta de INÍCIO, MEIO e FIM",
+                "Ganhar carta INICIO-MEIO-FIM",
+            ),
+            (
+                20,
+                "Pegue 1 carta sem ver e entregue para o jogador à frente",
+                "Entregar carta frente",
+            ),
+            (21, "Desafio! Elogie alguém ou perca 1 carta", "Desafio elogio"),
+            (22, "Troque suas cartas com o jogador à frente", "Troca cartas frente"),
+            (23, "Sorte! Pegue 1 carta de início", "Ganhar carta INICIO"),
+            (24, "Doe sua vez a alguém de sua escolha", "Doe vez"),
+            (
+                25,
+                "Pegue 1 carta sem ver e entregue para o próximo jogador",
+                "Entregar carta próximo",
+            ),
+            (26, "Sorte! Pegue 1 carta inicial", "Ganhar carta INICIO"),
+            (27, "Desafio! Elogie alguém ou perca 1 carta", "Desafio elogio"),
+            (
+                28,
+                "Veja o baralho do jogador à direita e troque 1 carta",
+                "Ver baralho direita",
+            ),
+            (29, "Roube 1 carta do jogador à direita", "Roubar carta direita"),
+            (30, "Azar! Perca 1 carta de INÍCIO", "Perder carta INICIO"),
+            (31, "Perca sua vez!", "Perder vez"),
+            (32, "Volte 2 casas", "Voltar casas"),
+            (33, "Ganhe 1 carta final", "Ganhar carta FIM"),
+            (
+                34,
+                "Troque suas cartas com o jogador da sua esquerda",
+                "Troca cartas esquerda",
+            ),
+            (
+                35,
+                "Perca sua carta FINAL caso não tenha perdido a sua vez",
+                "Perder carta FINAL condicional",
+            ),
+            (36, "Azar! Perca uma carta FINAL", "Perder carta FINAL"),
+        ]
+
+        for numero, nome, acao_nome in casas:
+            TabuleiroCadastro.objects.create(
+                numero_casa=numero,
+                nome_casa=nome,
+                acao=acao_objs[acao_nome],
+            )
+
+        return JsonResponse(
+            {"status": "Finalizado!", "msg": "Tabuleiro populado com sucesso"}
+        )
+
+
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
+from django.db import transaction
+from .models import Jogador, TabuleiroCadastro
+
+
+class RolarDadoView(APIView):
+    """
+    Move o jogador no tabuleiro conforme o valor do dado.
+    """
+
+    @transaction.atomic
+    def post(self, request):
+        try:
+            # Valor do dado (1 a 6)
+            valor_dado = int(request.data.get("valor_dado", 0))
+            id_jogador = request.data.get("id_jogador")
+
+            if not id_jogador or valor_dado not in range(1, 7):
+                return Response(
+                    {
+                        "error": "Parâmetros inválidos. Informe id_jogador e valor_dado (1-6)."
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            jogador = Jogador.objects.get(id_jogador=id_jogador)
+
+            # Última casa cadastrada
+            ultima_casa = TabuleiroCadastro.objects.order_by("-numero_casa").first()
+            if not ultima_casa:
+                return Response(
+                    {"error": "Tabuleiro não está populado."},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                )
+
+            # Caso o jogador ainda não tenha posição, começa do início (casa 1)
+            posicao_atual = jogador.id_casa or 1
+            nova_posicao = posicao_atual + valor_dado
+
+            # Se ultrapassou a última casa, reinicia contando o excedente
+            if nova_posicao > ultima_casa.numero_casa:
+                excedente = nova_posicao - ultima_casa.numero_casa
+                nova_posicao = excedente if excedente > 0 else 1
+
+            # Atualiza o jogador
+            jogador.id_casa = nova_posicao
+            jogador.save()
+
+            # Recupera o nome da nova casa
+            casa = TabuleiroCadastro.objects.get(numero_casa=nova_posicao)
+
+            return Response(
+                {
+                    "message": f"Jogador {jogador.nome_jogador} moveu {valor_dado} casas.",
+                    "nova_posicao": {
+                        "id_casa": jogador.id_casa,
+                        "nome_casa": casa.nome_casa,
+                    },
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        except Jogador.DoesNotExist:
+            return Response(
+                {"error": "Jogador não encontrado."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        except Exception as e:
+            return Response(
+                {"error": str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
