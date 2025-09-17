@@ -67,10 +67,6 @@ class DiceButton extends ConsumerWidget {
             final idAcao = novaPosicao['id_acao'];
 
             // Atualiza jogador localmente
-            final updatedJogador = jogador.copyWith(
-              idCasa: idCasa,
-              nomeCasa: novaPosicao['nome_casa'],
-            );
             ref.refresh(jogadorProvider); // Atualiza tela
 
             // Popup 2: Nome da casa
@@ -97,8 +93,8 @@ class DiceButton extends ConsumerWidget {
               ),
             );
 
-            // Popup 3: ações que distribuem ou removem cartas
-            if ([2, 3, 4, 5, 23, 24, 25].contains(idAcao)) {
+            // Popup 3: ações que distribuem/removem cartas ou trocam cartas
+            if ([2, 3, 4, 5, 6, 7, 8, 23, 24, 25].contains(idAcao)) {
               final acaoResponse = await http.post(
                 Uri.parse('http://127.0.0.1:8000/executar-acao-casa/'),
                 headers: {'Content-Type': 'application/json'},
@@ -108,14 +104,20 @@ class DiceButton extends ConsumerWidget {
               );
 
               if (acaoResponse.statusCode == 200) {
-                final acaoJson = jsonDecode(utf8.decode(acaoResponse.bodyBytes));
+                final acaoJson =
+                    jsonDecode(utf8.decode(acaoResponse.bodyBytes));
+
+                final String mensagem =
+                    acaoJson['mensagem'] ?? "Ação concluída";
 
                 final List<dynamic> cartasAdicionadas =
                     acaoJson['cartas_adicionadas'] ?? [];
                 final List<dynamic> cartasRemovidas =
                     acaoJson['cartas_removidas'] ?? [];
 
-                if (cartasAdicionadas.isNotEmpty ||
+                // Sempre mostra popup se houver mensagem ou troca de cartas
+                if (mensagem.isNotEmpty ||
+                    cartasAdicionadas.isNotEmpty ||
                     cartasRemovidas.isNotEmpty) {
                   await showDialog(
                     context: context,
@@ -128,41 +130,47 @@ class DiceButton extends ConsumerWidget {
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            const Text(
-                              "Resultado da ação",
-                              style: TextStyle(
+                            Text(
+                              mensagem,
+                              style: const TextStyle(
                                   fontSize: 22, fontWeight: FontWeight.bold),
+                              textAlign: TextAlign.center,
                             ),
                             const SizedBox(height: 20),
 
-                            // Lista de cartas adicionadas e removidas
-                            ConstrainedBox(
-                              constraints:
-                                  const BoxConstraints(maxHeight: 300),
-                              child: ListView(
-                                shrinkWrap: true,
-                                children: [
-                                  if (cartasAdicionadas.isNotEmpty)
-                                    ...cartasAdicionadas.map((carta) => ListTile(
-                                          leading: const Icon(Icons.add,
-                                              color: Colors.green),
-                                          title: Text(carta['nome']),
-                                          subtitle:
-                                              const Text("Carta recebida"),
-                                        )),
-                                  if (cartasRemovidas.isNotEmpty)
-                                    ...cartasRemovidas.map((carta) => ListTile(
-                                          leading: const Icon(Icons.remove,
-                                              color: Colors.red),
-                                          title: Text(carta['nome']),
-                                          subtitle:
-                                              const Text("Carta perdida"),
-                                        )),
-                                ],
+                            // Lista de cartas adicionadas/removidas (caso existam)
+                            if (cartasAdicionadas.isNotEmpty ||
+                                cartasRemovidas.isNotEmpty)
+                              ConstrainedBox(
+                                constraints:
+                                    const BoxConstraints(maxHeight: 300),
+                                child: ListView(
+                                  shrinkWrap: true,
+                                  children: [
+                                    if (cartasAdicionadas.isNotEmpty)
+                                      ...cartasAdicionadas.map((carta) =>
+                                          ListTile(
+                                            leading: const Icon(Icons.add,
+                                                color: Colors.green),
+                                            title: Text(carta['nome']),
+                                            subtitle:
+                                                const Text("Carta recebida"),
+                                          )),
+                                    if (cartasRemovidas.isNotEmpty)
+                                      ...cartasRemovidas
+                                          .map((carta) => ListTile(
+                                                leading: const Icon(
+                                                    Icons.remove,
+                                                    color: Colors.red),
+                                                title: Text(carta['nome']),
+                                                subtitle:
+                                                    const Text("Carta perdida"),
+                                              )),
+                                  ],
+                                ),
                               ),
-                            ),
-                            const SizedBox(height: 20),
 
+                            const SizedBox(height: 20),
                             ElevatedButton(
                               onPressed: () => Navigator.of(context).pop(),
                               child: const Text("Ok"),

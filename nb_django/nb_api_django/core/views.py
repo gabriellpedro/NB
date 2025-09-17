@@ -818,6 +818,428 @@ class RolarDadoView(APIView):
             )
 
 
+# ======================================================
+# FUNÇÕES AUXILIARES
+# ======================================================
+
+
+def perder_carta(jogador, casa, acao):
+    """Executa a lógica de remover carta do jogador."""
+    baralho = Baralho.objects.filter(
+        id_jogador=jogador, id_partida=jogador.id_partida
+    ).first()
+
+    if not baralho or not baralho.lista_de_cartas:
+        return {
+            "cartas_removidas": [],
+            "mensagem": f"Jogador {jogador.nome_jogador} não possui cartas.",
+        }
+
+    lista_cartas_jogador = json.loads(baralho.lista_de_cartas)
+
+    # Define tipo de carta a ser perdida
+    tipo_perdido = {23: "meio", 24: "inicio", 25: "final"}.get(acao.id_acao)
+
+    carta_removida = None
+    for id_carta in lista_cartas_jogador:
+        carta = BaralhoCadastro.objects.get(id_carta=id_carta)
+        if carta.tipo_carta.upper() == tipo_perdido.upper():
+            carta_removida = carta
+            lista_cartas_jogador.remove(id_carta)
+            break
+
+    if not carta_removida:
+        return {
+            "cartas_removidas": [],
+            "mensagem": f"Nenhuma carta do tipo {tipo_perdido} encontrada no baralho do jogador.",
+        }
+
+    # Atualiza baralho do jogador
+    baralho.lista_de_cartas = json.dumps(lista_cartas_jogador)
+    baralho.save()
+
+    # Atualiza controle global
+    controle = ControlePartida.objects.filter(id_partida=jogador.id_partida).first()
+    if controle:
+        cartas_jogadores = (
+            json.loads(controle.cartas_jogadores) if controle.cartas_jogadores else []
+        )
+        if carta_removida.id_carta in cartas_jogadores:
+            cartas_jogadores.remove(carta_removida.id_carta)
+        controle.cartas_jogadores = json.dumps(cartas_jogadores)
+
+        descartadas = (
+            json.loads(controle.cartas_descartadas)
+            if controle.cartas_descartadas
+            else []
+        )
+        descartadas.append(carta_removida.id_carta)
+        controle.cartas_descartadas = json.dumps(descartadas)
+
+        controle.save()
+
+    return {
+        "cartas_removidas": [
+            {
+                "id_carta": carta_removida.id_carta,
+                "nome": carta_removida.nome_carta,
+                "tipo": carta_removida.tipo_carta,
+            }
+        ]
+    }
+
+
+def ganhar_carta(jogador, casa, acao):
+    """Executa a lógica de adicionar carta ao jogador."""
+    controle = ControlePartida.objects.filter(id_partida=jogador.id_partida).first()
+    if not controle:
+        raise Exception("Controle da partida não encontrado.")
+
+    entregues_ids = []
+    if controle.cartas_jogadores:
+        entregues_ids += json.loads(controle.cartas_jogadores)
+    if controle.cartas_descartadas:
+        entregues_ids += json.loads(controle.cartas_descartadas)
+
+    baralho, _ = Baralho.objects.get_or_create(
+        id_jogador=jogador, id_partida=jogador.id_partida
+    )
+    lista_cartas_jogador = (
+        json.loads(baralho.lista_de_cartas) if baralho.lista_de_cartas else []
+    )
+
+    cartas_adicionadas = []
+
+    def buscar_carta_disponivel(tipo):
+        todas_cartas = BaralhoCadastro.objects.filter(tipo_carta__iexact=tipo)
+        for c in todas_cartas:
+            if c.id_carta not in entregues_ids:
+                entregues_ids.append(c.id_carta)
+                return c
+        return None
+
+    tipos_a_distribuir = {
+        2: ["final"],
+        3: ["meio"],
+        4: ["inicio"],
+        5: ["inicio", "meio", "final"],
+    }.get(acao.id_acao, [])
+
+    for tipo in tipos_a_distribuir:
+        carta = buscar_carta_disponivel(tipo)
+        if carta:
+            lista_cartas_jogador.append(carta.id_carta)
+            cartas_adicionadas.append(carta)
+
+    baralho.lista_de_cartas = json.dumps(lista_cartas_jogador)
+    baralho.save()
+
+    controle.cartas_jogadores = json.dumps(entregues_ids)
+    controle.save()
+
+    return {
+        "cartas_adicionadas": [
+            {
+                "id_carta": c.id_carta,
+                "nome": c.nome_carta,
+                "tipo": c.tipo_carta,
+            }
+            for c in cartas_adicionadas
+        ]
+    }
+
+
+def trocar_com_jogador_frente(jogador, casa, acao):
+    """
+    Troca todas as cartas do jogador atual com outro jogador, seguindo regras:
+      - Se só houver 1 jogador na partida → não faz nada
+      - Se houver apenas 2 jogadores → troca com o outro
+      - Se houver 3 ou mais jogadores → troca com o segundo próximo válido (não o imediato)
+      - Atualiza as listas de cartas de ambos no banco
+    """
+    partida = jogador.id_partida
+    if not partida:
+        return {"mensagem": "Jogador não está vinculado a uma partida."}
+
+    # Mapeamento da ordem das cores
+    ordem_cores = ["amarelo", "azul", "preto", "roxo"]
+
+    # Descobre a posição do jogador atual
+    cor_atual = jogador.cor_jogador.lower()
+    if cor_atual not in ordem_cores:
+        return {"mensagem": f"A cor {cor_atual} não é válida para troca."}
+
+    idx_atual = ordem_cores.index(cor_atual)
+
+    # Monta lista de jogadores ativos
+    jogadores_ids = {
+        "amarelo": partida.id_jogador_amarelo,
+        "azul": partida.id_jogador_azul,
+        "preto": partida.id_jogador_preto,
+        "roxo": partida.id_jogador_roxo,
+    }
+    jogadores_ativos = [cor for cor, jid in jogadores_ids.items() if jid]
+
+    if len(jogadores_ativos) <= 1:
+        return {"mensagem": "Não há outros jogadores para realizar a troca."}
+
+    # Define quantos passos dar (1 se só houver 2 jogadores, 2 caso contrário)
+    passos = 1 if len(jogadores_ativos) == 2 else 2
+
+    # Busca jogador destino com base nos passos
+    prox_idx = idx_atual
+    jogador_destino_id = None
+    tentativas = 0
+    encontrados = 0
+    while tentativas < len(ordem_cores) * 2:  # segurança contra loop infinito
+        prox_idx = (prox_idx + 1) % len(ordem_cores)
+        cor_prox = ordem_cores[prox_idx]
+        jogador_id = jogadores_ids.get(cor_prox)
+        if jogador_id:
+            encontrados += 1
+            if encontrados == passos:  # achou o jogador certo
+                jogador_destino_id = jogador_id
+                break
+        tentativas += 1
+
+    if not jogador_destino_id:
+        return {"mensagem": "Nenhum jogador válido encontrado para troca."}
+
+    # Carrega o objeto destino
+    try:
+        jogador_destino = Jogador.objects.get(id_jogador=jogador_destino_id)
+    except Jogador.DoesNotExist:
+        return {"mensagem": "Jogador destino não encontrado."}
+
+    # Carrega baralhos de origem e destino
+    baralho_origem, _ = Baralho.objects.get_or_create(
+        id_jogador=jogador, id_partida=partida
+    )
+    baralho_destino, _ = Baralho.objects.get_or_create(
+        id_jogador=jogador_destino, id_partida=partida
+    )
+
+    cartas_origem = (
+        json.loads(baralho_origem.lista_de_cartas)
+        if baralho_origem.lista_de_cartas
+        else []
+    )
+    cartas_destino = (
+        json.loads(baralho_destino.lista_de_cartas)
+        if baralho_destino.lista_de_cartas
+        else []
+    )
+
+    # Faz a troca
+    baralho_origem.lista_de_cartas = json.dumps(cartas_destino)
+    baralho_destino.lista_de_cartas = json.dumps(cartas_origem)
+    baralho_origem.save()
+    baralho_destino.save()
+
+    return {
+        "mensagem": f"Cartas trocadas entre {jogador.nome_jogador} e {jogador_destino.nome_jogador}.",
+        "jogador_origem": {
+            "id": jogador.id_jogador,
+            "nome": jogador.nome_jogador,
+            "cartas_finais": cartas_destino,
+        },
+        "jogador_destino": {
+            "id": jogador_destino.id_jogador,
+            "nome": jogador_destino.nome_jogador,
+            "cartas_finais": cartas_origem,
+        },
+    }
+
+
+def trocar_com_jogador_direita(jogador, casa, acao):
+    """
+    Troca todas as cartas do jogador atual com o jogador à direita (próximo imediato).
+    Regras:
+      - Se só houver 1 jogador na partida → não faz nada
+      - Se houver 2 jogadores → troca com o outro
+      - Sempre pega o próximo jogador válido na ordem fixa (amarelo → azul → preto → roxo → amarelo)
+      - Atualiza as listas de cartas de ambos no banco
+    """
+    partida = jogador.id_partida
+    if not partida:
+        return {"mensagem": "Jogador não está vinculado a uma partida."}
+
+    # Ordem fixa de cores
+    ordem_cores = ["amarelo", "azul", "preto", "roxo"]
+
+    cor_atual = jogador.cor_jogador.lower()
+    if cor_atual not in ordem_cores:
+        return {"mensagem": f"A cor {cor_atual} não é válida para troca."}
+
+    idx_atual = ordem_cores.index(cor_atual)
+
+    # Jogadores ativos
+    jogadores_ids = [
+        partida.id_jogador_amarelo,
+        partida.id_jogador_azul,
+        partida.id_jogador_preto,
+        partida.id_jogador_roxo,
+    ]
+    jogadores_ativos = [j for j in jogadores_ids if j]
+    if len(jogadores_ativos) <= 1:
+        return {"mensagem": "Não há outros jogadores para realizar a troca."}
+
+    # Busca próximo jogador válido na ordem (direita)
+    prox_idx = (idx_atual + 1) % len(ordem_cores)
+    jogador_destino_id = None
+    tentativas = 0
+    while tentativas < len(ordem_cores):
+        cor_prox = ordem_cores[prox_idx]
+        jogador_destino_id = getattr(partida, f"id_jogador_{cor_prox}", None)
+        if jogador_destino_id:
+            break
+        prox_idx = (prox_idx + 1) % len(ordem_cores)
+        tentativas += 1
+
+    if not jogador_destino_id:
+        return {"mensagem": "Nenhum jogador válido encontrado para troca."}
+
+    try:
+        jogador_destino = Jogador.objects.get(id_jogador=jogador_destino_id)
+    except Jogador.DoesNotExist:
+        return {"mensagem": "Jogador destino não encontrado."}
+
+    # Baralhos
+    baralho_origem, _ = Baralho.objects.get_or_create(
+        id_jogador=jogador, id_partida=partida
+    )
+    baralho_destino, _ = Baralho.objects.get_or_create(
+        id_jogador=jogador_destino, id_partida=partida
+    )
+
+    cartas_origem = (
+        json.loads(baralho_origem.lista_de_cartas)
+        if baralho_origem.lista_de_cartas
+        else []
+    )
+    cartas_destino = (
+        json.loads(baralho_destino.lista_de_cartas)
+        if baralho_destino.lista_de_cartas
+        else []
+    )
+
+    # Faz a troca
+    baralho_origem.lista_de_cartas = json.dumps(cartas_destino)
+    baralho_destino.lista_de_cartas = json.dumps(cartas_origem)
+    baralho_origem.save()
+    baralho_destino.save()
+
+    return {
+        "mensagem": f"Cartas trocadas entre {jogador.nome_jogador} e {jogador_destino.nome_jogador}.",
+        "jogador_origem": {
+            "id": jogador.id_jogador,
+            "nome": jogador.nome_jogador,
+            "cartas_finais": cartas_destino,
+        },
+        "jogador_destino": {
+            "id": jogador_destino.id_jogador,
+            "nome": jogador_destino.nome_jogador,
+            "cartas_finais": cartas_origem,
+        },
+    }
+
+
+def trocar_com_jogador_esquerda(jogador, casa, acao):
+    """
+    Troca todas as cartas do jogador atual com o jogador à esquerda (antecessor imediato).
+    Regras:
+      - Se só houver 1 jogador na partida → não faz nada
+      - Se houver 2 jogadores → troca com o outro
+      - Sempre pega o jogador válido imediatamente anterior na ordem fixa
+      - Atualiza as listas de cartas de ambos no banco
+    """
+    partida = jogador.id_partida
+    if not partida:
+        return {"mensagem": "Jogador não está vinculado a uma partida."}
+
+    # Ordem fixa de cores
+    ordem_cores = ["amarelo", "azul", "preto", "roxo"]
+
+    cor_atual = jogador.cor_jogador.lower()
+    if cor_atual not in ordem_cores:
+        return {"mensagem": f"A cor {cor_atual} não é válida para troca."}
+
+    idx_atual = ordem_cores.index(cor_atual)
+
+    # Jogadores ativos
+    jogadores_ids = [
+        partida.id_jogador_amarelo,
+        partida.id_jogador_azul,
+        partida.id_jogador_preto,
+        partida.id_jogador_roxo,
+    ]
+    jogadores_ativos = [j for j in jogadores_ids if j]
+    if len(jogadores_ativos) <= 1:
+        return {"mensagem": "Não há outros jogadores para realizar a troca."}
+
+    # Busca jogador válido à esquerda (antecessor imediato)
+    prox_idx = (idx_atual - 1) % len(ordem_cores)
+    jogador_destino_id = None
+    tentativas = 0
+    while tentativas < len(ordem_cores):
+        cor_prox = ordem_cores[prox_idx]
+        jogador_destino_id = getattr(partida, f"id_jogador_{cor_prox}", None)
+        if jogador_destino_id:
+            break
+        prox_idx = (prox_idx - 1) % len(ordem_cores)
+        tentativas += 1
+
+    if not jogador_destino_id:
+        return {"mensagem": "Nenhum jogador válido encontrado para troca."}
+
+    try:
+        jogador_destino = Jogador.objects.get(id_jogador=jogador_destino_id)
+    except Jogador.DoesNotExist:
+        return {"mensagem": "Jogador destino não encontrado."}
+
+    # Baralhos
+    baralho_origem, _ = Baralho.objects.get_or_create(
+        id_jogador=jogador, id_partida=partida
+    )
+    baralho_destino, _ = Baralho.objects.get_or_create(
+        id_jogador=jogador_destino, id_partida=partida
+    )
+
+    cartas_origem = (
+        json.loads(baralho_origem.lista_de_cartas)
+        if baralho_origem.lista_de_cartas else []
+    )
+    cartas_destino = (
+        json.loads(baralho_destino.lista_de_cartas)
+        if baralho_destino.lista_de_cartas else []
+    )
+
+    # Faz a troca
+    baralho_origem.lista_de_cartas = json.dumps(cartas_destino)
+    baralho_destino.lista_de_cartas = json.dumps(cartas_origem)
+    baralho_origem.save()
+    baralho_destino.save()
+
+    return {
+        "mensagem": f"Cartas trocadas entre {jogador.nome_jogador} e {jogador_destino.nome_jogador}.",
+        "jogador_origem": {
+            "id": jogador.id_jogador,
+            "nome": jogador.nome_jogador,
+            "cartas_finais": cartas_destino,
+        },
+        "jogador_destino": {
+            "id": jogador_destino.id_jogador,
+            "nome": jogador_destino.nome_jogador,
+            "cartas_finais": cartas_origem,
+        },
+    }
+
+
+# ======================================================
+# ENDPOINT PRINCIPAL
+# ======================================================
+
+
 @api_view(["POST"])
 def executar_acao_casa(request):
     try:
@@ -829,190 +1251,40 @@ def executar_acao_casa(request):
                 {"erro": "id_jogador e id_casa são obrigatórios."}, status=400
             )
 
-        # Busca jogador e casa
         jogador = Jogador.objects.get(id_jogador=id_jogador)
         casa = TabuleiroCadastro.objects.get(id_casa=id_casa)
         acao = casa.acao
 
-        # ======================================================
-        # AÇÕES DE PERDER CARTA (23, 24, 25)
-        # ======================================================
+        resultado = {}
+
+        # Chama a função correta conforme ação
         if acao.id_acao in [23, 24, 25]:
-            # Busca baralho do jogador
-            baralho = Baralho.objects.filter(
-                id_jogador=jogador, id_partida=jogador.id_partida
-            ).first()
+            resultado = perder_carta(jogador, casa, acao)
 
-            if not baralho or not baralho.lista_de_cartas:
-                return Response(
-                    {
-                        "id_jogador": jogador.id_jogador,
-                        "nova_posicao": {
-                            "id_casa": casa.id_casa,
-                            "nome_casa": casa.nome_casa,
-                        },
-                        "cartas_removidas": [],
-                        "mensagem": f"Jogador {jogador.nome_jogador} não possui cartas.",
-                    },
-                    status=200,
-                )
+        elif acao.id_acao in [2, 3, 4, 5]:
+            resultado = ganhar_carta(jogador, casa, acao)
 
-            lista_cartas_jogador = json.loads(baralho.lista_de_cartas)
+        elif acao.id_acao == 6:  # Troca com jogador à frente
+            resultado = trocar_com_jogador_frente(jogador, casa, acao)
 
-            # Define tipo de carta que deve ser perdida
-            if acao.id_acao == 23:
-                tipo_perdido = "meio"
-            elif acao.id_acao == 24:
-                tipo_perdido = "inicio"
-            elif acao.id_acao == 25:
-                tipo_perdido = "final"
+        elif acao.id_acao == 7:  # Trocar com jogador à direita
+            resultado = trocar_com_jogador_direita(jogador, casa, acao)
 
-            carta_removida = None
-            for id_carta in lista_cartas_jogador:
-                carta = BaralhoCadastro.objects.get(id_carta=id_carta)
-                if carta.tipo_carta.upper() == tipo_perdido.upper():
-                    carta_removida = carta
-                    lista_cartas_jogador.remove(id_carta)
-                    break
+        elif acao.id_acao == 8:  # Trocar com jogador à esquerda
+            resultado = trocar_com_jogador_esquerda(jogador, casa, acao)
 
-            if not carta_removida:
-                return Response(
-                    {
-                        "id_jogador": jogador.id_jogador,
-                        "nova_posicao": {
-                            "id_casa": casa.id_casa,
-                            "nome_casa": casa.nome_casa,
-                        },
-                        "cartas_removidas": [],
-                        "mensagem": f"Nenhuma carta do tipo {tipo_perdido} encontrada no baralho do jogador.",
-                    },
-                    status=200,
-                )
-
-            # Atualiza baralho do jogador
-            baralho.lista_de_cartas = json.dumps(lista_cartas_jogador)
-            baralho.save()
-
-            # Atualiza controle global -> remove de cartas_jogadores e joga em descartadas
-            controle = ControlePartida.objects.filter(
-                id_partida=jogador.id_partida
-            ).first()
-            if controle:
-                # Remove da lista de cartas_jogadores
-                cartas_jogadores = (
-                    json.loads(controle.cartas_jogadores)
-                    if controle.cartas_jogadores
-                    else []
-                )
-                if carta_removida.id_carta in cartas_jogadores:
-                    cartas_jogadores.remove(carta_removida.id_carta)
-                controle.cartas_jogadores = json.dumps(cartas_jogadores)
-
-                # Adiciona em descartadas
-                descartadas = (
-                    json.loads(controle.cartas_descartadas)
-                    if controle.cartas_descartadas
-                    else []
-                )
-                descartadas.append(carta_removida.id_carta)
-                controle.cartas_descartadas = json.dumps(descartadas)
-
-                controle.save()
-
-            return Response(
-                {
-                    "id_jogador": jogador.id_jogador,
-                    "nova_posicao": {
-                        "id_casa": casa.id_casa,
-                        "nome_casa": casa.nome_casa,
-                    },
-                    "cartas_removidas": [
-                        {
-                            "id_carta": carta_removida.id_carta,
-                            "nome": carta_removida.nome_carta,
-                            "tipo": carta_removida.tipo_carta,
-                        }
-                    ],
+        # Monta retorno unificado
+        return Response(
+            {
+                "id_jogador": jogador.id_jogador,
+                "nova_posicao": {
+                    "id_casa": casa.id_casa,
+                    "nome_casa": casa.nome_casa,
                 },
-                status=200,
-            )
-
-        # ======================================================
-        # AÇÕES DE GANHAR CARTA (2, 3, 4, 5)
-        # ======================================================
-        if acao.id_acao in [2, 3, 4, 5]:
-            controle = ControlePartida.objects.filter(
-                id_partida=jogador.id_partida
-            ).first()
-            if not controle:
-                return Response(
-                    {"erro": "Controle da partida não encontrado."}, status=400
-                )
-
-            entregues_ids = []
-            if controle.cartas_jogadores:
-                entregues_ids += json.loads(controle.cartas_jogadores)
-            if controle.cartas_descartadas:
-                entregues_ids += json.loads(controle.cartas_descartadas)
-
-            baralho, _ = Baralho.objects.get_or_create(
-                id_jogador=jogador, id_partida=jogador.id_partida
-            )
-            lista_cartas_jogador = (
-                json.loads(baralho.lista_de_cartas) if baralho.lista_de_cartas else []
-            )
-
-            cartas_adicionadas = []
-
-            def buscar_carta_disponivel(tipo):
-                todas_cartas = BaralhoCadastro.objects.filter(tipo_carta__iexact=tipo)
-                for c in todas_cartas:
-                    if c.id_carta not in entregues_ids:
-                        entregues_ids.append(c.id_carta)
-                        return c
-                return None
-
-            if acao.id_acao == 2:
-                tipos_a_distribuir = ["final"]
-            elif acao.id_acao == 3:
-                tipos_a_distribuir = ["meio"]
-            elif acao.id_acao == 4:
-                tipos_a_distribuir = ["inicio"]
-            elif acao.id_acao == 5:
-                tipos_a_distribuir = ["inicio", "meio", "final"]
-
-            for tipo in tipos_a_distribuir:
-                carta = buscar_carta_disponivel(tipo)
-                if carta:
-                    lista_cartas_jogador.append(carta.id_carta)
-                    cartas_adicionadas.append(carta)
-
-            baralho.lista_de_cartas = json.dumps(lista_cartas_jogador)
-            baralho.save()
-
-            controle.cartas_jogadores = json.dumps(entregues_ids)
-            controle.save()
-
-            return Response(
-                {
-                    "id_jogador": jogador.id_jogador,
-                    "nova_posicao": {
-                        "id_casa": casa.id_casa,
-                        "nome_casa": casa.nome_casa,
-                    },
-                    "cartas_adicionadas": [
-                        {
-                            "id_carta": c.id_carta,
-                            "nome": c.nome_carta,
-                            "tipo": c.tipo_carta,
-                        }
-                        for c in cartas_adicionadas
-                    ],
-                },
-                status=200,
-            )
-
-        return Response({"mensagem": "Nenhuma ação executada."}, status=200)
+                **resultado,
+            },
+            status=200,
+        )
 
     except Jogador.DoesNotExist:
         return Response({"erro": "Jogador não encontrado."}, status=404)
