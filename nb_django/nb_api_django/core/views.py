@@ -9,6 +9,7 @@ from .models import (
     BaralhoCadastro,
     ControlePartida,
     Jogador,
+    Notificacao,
     Partida,
     TabuleiroCadastro,
 )
@@ -17,6 +18,8 @@ from rest_framework.response import Response
 from rest_framework import status
 from django.db import transaction
 from rest_framework.decorators import api_view
+from django.views.decorators.http import require_GET, require_POST
+from django.views.decorators.csrf import csrf_exempt
 
 
 def populate_baralho_cadastro(request):
@@ -581,6 +584,57 @@ class JogadorDetalhesView(APIView):
         return Response(data, status=status.HTTP_200_OK)
 
 
+class CartasJogadorView(APIView):
+    """
+    Retorna apenas as cartas do jogador a partir do id_jogador.
+    """
+
+    def get(self, request, id_jogador):
+        try:
+            # Verifica se o jogador existe
+            jogador = Jogador.objects.get(id_jogador=id_jogador)
+        except Jogador.DoesNotExist:
+            return Response(
+                {"error": "Jogador não encontrado."}, status=status.HTTP_404_NOT_FOUND
+            )
+
+        # Busca o baralho do jogador
+        baralho = Baralho.objects.filter(id_jogador=jogador).first()
+        if not baralho:
+            return Response({"cartas": []}, status=status.HTTP_200_OK)
+
+        # Extrai IDs de cartas da lista
+        lista_ids = json.loads(baralho.lista_de_cartas or "[]")
+
+        # Busca detalhes das cartas
+        cartas = BaralhoCadastro.objects.filter(id_carta__in=lista_ids).values(
+            "id_carta", "nome_carta", "tipo_carta", "cor_carta", "descricao_carta"
+        )
+
+        return Response({"cartas": list(cartas)}, status=status.HTTP_200_OK)
+
+
+class JogadoresPartidaView(APIView):
+    """
+    Retorna os jogadores de uma partida específica (id_partida)
+    """
+
+    def get(self, request, id_partida):
+        try:
+            partida = Partida.objects.get(id_partida=id_partida)
+        except Partida.DoesNotExist:
+            return Response(
+                {"erro": "Partida não encontrada."}, status=status.HTTP_404_NOT_FOUND
+            )
+
+        # Busca jogadores ativos vinculados à partida
+        jogadores = Jogador.objects.filter(id_partida=partida).values(
+            "id_jogador", "nome_jogador"
+        )
+
+        return Response({"jogadores": list(jogadores)}, status=status.HTTP_200_OK)
+
+
 class PopularTabuleiroView(View):
     def get(self, request):
         # 🔹 Se já houver dados no tabuleiro ou ações, não popula de novo
@@ -818,9 +872,91 @@ class RolarDadoView(APIView):
             )
 
 
+@api_view(["GET"])
+def jogador_esquerda(request, id_jogador):
+    try:
+        jogador = Jogador.objects.get(id_jogador=id_jogador)
+        jogador_esquerda_id = get_jogador_esquerda(jogador)
+        if not jogador_esquerda_id:
+            return Response({"mensagem": "Não há jogador à esquerda."}, status=404)
+        return Response({"id_jogador_esquerda": jogador_esquerda_id}, status=200)
+    except Jogador.DoesNotExist:
+        return Response({"erro": "Jogador não encontrado."}, status=404)
+
+
+@api_view(["GET"])
+def jogador_direita(request, id_jogador):
+    try:
+        jogador = Jogador.objects.get(id_jogador=id_jogador)
+        jogador_direita_id = get_jogador_direita(jogador)
+        if not jogador_direita_id:
+            return Response({"mensagem": "Não há jogador à direita."}, status=404)
+        return Response({"id_jogador_direita": jogador_direita_id}, status=200)
+    except Jogador.DoesNotExist:
+        return Response({"erro": "Jogador não encontrado."}, status=404)
+
+
 # ======================================================
 # FUNÇÕES AUXILIARES
 # ======================================================
+
+
+def get_jogador_esquerda(jogador):
+    """
+    Retorna o id_jogador do jogador imediatamente à esquerda.
+    """
+    partida = jogador.id_partida
+    if not partida:
+        return None
+
+    ordem_cores = ["amarelo", "azul", "preto", "roxo"]
+
+    cor_atual = jogador.cor_jogador.lower()
+    if cor_atual not in ordem_cores:
+        return None
+
+    idx_atual = ordem_cores.index(cor_atual)
+    prox_idx = (idx_atual - 1) % len(ordem_cores)
+
+    tentativas = 0
+    while tentativas < len(ordem_cores):
+        cor_prox = ordem_cores[prox_idx]
+        jogador_id = getattr(partida, f"id_jogador_{cor_prox}", None)
+        if jogador_id:
+            return jogador_id
+        prox_idx = (prox_idx - 1) % len(ordem_cores)
+        tentativas += 1
+
+    return None
+
+
+def get_jogador_direita(jogador):
+    """
+    Retorna o id_jogador do jogador imediatamente à direita.
+    """
+    partida = jogador.id_partida
+    if not partida:
+        return None
+
+    ordem_cores = ["amarelo", "azul", "preto", "roxo"]
+
+    cor_atual = jogador.cor_jogador.lower()
+    if cor_atual not in ordem_cores:
+        return None
+
+    idx_atual = ordem_cores.index(cor_atual)
+    prox_idx = (idx_atual + 1) % len(ordem_cores)
+
+    tentativas = 0
+    while tentativas < len(ordem_cores):
+        cor_prox = ordem_cores[prox_idx]
+        jogador_id = getattr(partida, f"id_jogador_{cor_prox}", None)
+        if jogador_id:
+            return jogador_id
+        prox_idx = (prox_idx + 1) % len(ordem_cores)
+        tentativas += 1
+
+    return None
 
 
 def perder_carta(jogador, casa, acao):
@@ -1237,6 +1373,135 @@ def trocar_com_jogador_esquerda(jogador, casa, acao):
     }
 
 
+def roubar_carta(jogador, jogador_destino, id_carta):
+    """
+    Rouba uma carta específica de um jogador destino.
+    """
+    partida = jogador.id_partida
+    if not partida:
+        return {"mensagem": "Jogador não está vinculado a uma partida."}
+
+    # Baralhos
+    baralho_origem, _ = Baralho.objects.get_or_create(
+        id_jogador=jogador, id_partida=partida
+    )
+    baralho_destino, _ = Baralho.objects.get_or_create(
+        id_jogador=jogador_destino, id_partida=partida
+    )
+
+    cartas_origem = (
+        json.loads(baralho_origem.lista_de_cartas)
+        if baralho_origem.lista_de_cartas
+        else []
+    )
+    cartas_destino = (
+        json.loads(baralho_destino.lista_de_cartas)
+        if baralho_destino.lista_de_cartas
+        else []
+    )
+
+    if id_carta not in cartas_destino:
+        return {
+            "mensagem": f"Carta {id_carta} não encontrada no baralho do jogador alvo."
+        }
+
+    # Remove do destino e adiciona ao ladrão
+    cartas_destino.remove(id_carta)
+    cartas_origem.append(id_carta)
+
+    baralho_origem.lista_de_cartas = json.dumps(cartas_origem)
+    baralho_destino.lista_de_cartas = json.dumps(cartas_destino)
+    baralho_origem.save()
+    baralho_destino.save()
+
+    mensagem = f"{jogador.nome_jogador} roubou a carta {id_carta} de {jogador_destino.nome_jogador}."
+
+    # Notificação para o jogador roubado
+    criar_notificacao(jogador, jogador_destino, mensagem)
+
+    return {
+        "mensagem": mensagem,
+        "jogador_origem": {
+            "id": jogador.id_jogador,
+            "nome": jogador.nome_jogador,
+            "cartas_finais": cartas_origem,
+        },
+        "jogador_destino": {
+            "id": jogador_destino.id_jogador,
+            "nome": jogador_destino.nome_jogador,
+            "cartas_finais": cartas_destino,
+        },
+    }
+
+
+def roubar_jogador_esquerda(jogador, id_carta):
+    """
+    Rouba uma carta de quem está imediatamente à esquerda.
+    """
+    partida = jogador.id_partida
+    ordem_cores = ["amarelo", "azul", "preto", "roxo"]
+
+    cor_atual = jogador.cor_jogador.lower()
+    idx_atual = ordem_cores.index(cor_atual)
+
+    prox_idx = (idx_atual - 1) % len(ordem_cores)
+    jogador_destino_id = None
+    tentativas = 0
+    while tentativas < len(ordem_cores):
+        cor_prox = ordem_cores[prox_idx]
+        jogador_destino_id = getattr(partida, f"id_jogador_{cor_prox}", None)
+        if jogador_destino_id:
+            break
+        prox_idx = (prox_idx - 1) % len(ordem_cores)
+        tentativas += 1
+
+    if not jogador_destino_id:
+        return {"mensagem": "Nenhum jogador válido encontrado para roubo."}
+
+    jogador_destino = Jogador.objects.get(id_jogador=jogador_destino_id)
+    return roubar_carta(jogador, jogador_destino, id_carta)
+
+
+def roubar_jogador_direita(jogador, id_carta):
+    """
+    Rouba uma carta de quem está imediatamente à direita.
+    """
+    partida = jogador.id_partida
+    ordem_cores = ["amarelo", "azul", "preto", "roxo"]
+
+    cor_atual = jogador.cor_jogador.lower()
+    idx_atual = ordem_cores.index(cor_atual)
+
+    prox_idx = (idx_atual + 1) % len(ordem_cores)
+    jogador_destino_id = None
+    tentativas = 0
+    while tentativas < len(ordem_cores):
+        cor_prox = ordem_cores[prox_idx]
+        jogador_destino_id = getattr(partida, f"id_jogador_{cor_prox}", None)
+        if jogador_destino_id:
+            break
+        prox_idx = (prox_idx + 1) % len(ordem_cores)
+        tentativas += 1
+
+    if not jogador_destino_id:
+        return {"mensagem": "Nenhum jogador válido encontrado para roubo."}
+
+    jogador_destino = Jogador.objects.get(id_jogador=jogador_destino_id)
+    return roubar_carta(jogador, jogador_destino, id_carta)
+
+
+def roubar_jogador_geral(jogador, id_jogador_destino, id_carta):
+    """
+    Rouba uma carta de um jogador específico (id_jogador_destino).
+    """
+    try:
+        jogador_destino = Jogador.objects.get(id_jogador=id_jogador_destino)
+    except Jogador.DoesNotExist:
+        return {"mensagem": "Jogador alvo não encontrado."}
+
+    return roubar_carta(jogador, jogador_destino, id_carta)
+
+
 def doar_carta(jogador, id_jogador_destino, id_carta):
     """
     Doe uma carta específica a outro jogador.
@@ -1284,8 +1549,14 @@ def doar_carta(jogador, id_jogador_destino, id_carta):
     baralho_origem.save()
     baralho_destino.save()
 
+    # Monta mensagem
+    mensagem = f"{jogador.nome_jogador} doou a carta {id_carta} para {jogador_destino.nome_jogador}."
+
+    # Cria notificação
+    criar_notificacao(jogador, jogador_destino, mensagem)
+
     return {
-        "mensagem": f"{jogador.nome_jogador} doou a carta {id_carta} para {jogador_destino.nome_jogador}.",
+        "mensagem": mensagem,
         "jogador_origem": {
             "id": jogador.id_jogador,
             "nome": jogador.nome_jogador,
@@ -1297,6 +1568,105 @@ def doar_carta(jogador, id_jogador_destino, id_carta):
             "cartas_finais": cartas_destino,
         },
     }
+
+
+def criar_notificacao(jogador_origem, jogador_destino, mensagem):
+    """
+    Cria uma notificação entre jogador_origem e jogador_destino.
+    """
+    notificacao = Notificacao.objects.create(
+        id_jogador_origem=jogador_origem,
+        id_jogador_destino=jogador_destino,
+        id_partida=jogador_origem.id_partida.id_partida,
+        mensagem=mensagem,
+        necessita_atualizar=True,
+        processado=False,
+    )
+    return notificacao
+
+
+@require_GET
+def notificacoes_pendentes_partida(request, partida_id):
+    """
+    Retorna todas as notificações pendentes de uma partida.
+    """
+    notificacoes = Notificacao.objects.filter(
+        id_partida=partida_id,
+        processado=False,
+        necessita_atualizar=True,
+    ).order_by("-criado_em")
+
+    data = [
+        {
+            "id": n.id_notificacao,
+            "jogador_origem": n.id_jogador_origem.id_jogador,
+            "jogador_destino": n.id_jogador_destino.id_jogador,
+            "mensagem": n.mensagem,
+            "criado_em": n.criado_em.strftime("%Y-%m-%d %H:%M:%S"),
+        }
+        for n in notificacoes
+    ]
+
+    return JsonResponse({"pendentes": data})
+
+
+@require_GET
+def notificacoes_pendentes_jogador(request, jogador_id, partida_id):
+    """
+    Retorna as notificações pendentes de um jogador em uma partida específica.
+    """
+    notificacoes = Notificacao.objects.filter(
+        id_jogador_destino_id=jogador_id,
+        id_partida=partida_id,
+        processado=False,
+        necessita_atualizar=True,
+    ).order_by("-criado_em")
+
+    data = [
+        {
+            "id": n.id_notificacao,
+            "mensagem": n.mensagem,
+            "criado_em": n.criado_em.strftime("%Y-%m-%d %H:%M:%S"),
+        }
+        for n in notificacoes
+    ]
+
+    return JsonResponse({"pendentes": data})
+
+
+@csrf_exempt
+@require_POST
+def marcar_notificacao_processada(request):
+    """
+    Marca uma notificação como processada a partir do id_notificacao enviado no corpo da requisição.
+    Exemplo de requisição:
+    POST /notificacoes/processar/
+    {
+        "id_notificacao": 5
+    }
+    """
+    try:
+        body = json.loads(request.body.decode("utf-8"))
+        id_notificacao = body.get("id_notificacao")
+
+        if not id_notificacao:
+            return JsonResponse({"erro": "id_notificacao é obrigatório"}, status=400)
+
+        notificacao = Notificacao.objects.filter(id_notificacao=id_notificacao).first()
+        if not notificacao:
+            return JsonResponse({"erro": "Notificação não encontrada"}, status=404)
+
+        notificacao.processado = True
+        notificacao.necessita_atualizar = False
+        notificacao.save()
+
+        return JsonResponse(
+            {"mensagem": f"Notificação {id_notificacao} marcada como processada."},
+            status=200,
+        )
+
+    except Exception as e:
+        return JsonResponse({"erro": str(e)}, status=500)
 
 
 # ======================================================
@@ -1348,6 +1718,23 @@ def executar_acao_casa(request):
                     status=400,
                 )
             resultado = doar_carta(jogador, id_jogador_destino, id_carta)
+        elif acao.id_acao == 13:  # Roubar do jogador à esquerda
+            if not id_carta:
+                return Response({"erro": "id_carta é obrigatório."}, status=400)
+            resultado = roubar_jogador_esquerda(jogador, id_carta)
+
+        elif acao.id_acao == 14:  # Roubar do jogador à direita
+            if not id_carta:
+                return Response({"erro": "id_carta é obrigatório."}, status=400)
+            resultado = roubar_jogador_direita(jogador, id_carta)
+
+        elif acao.id_acao == 15:  # Roubar de um jogador qualquer
+            if not id_jogador_destino or not id_carta:
+                return Response(
+                    {"erro": "id_jogador_destino e id_carta são obrigatórios."},
+                    status=400,
+                )
+            resultado = roubar_jogador_geral(jogador, id_jogador_destino, id_carta)
 
         # Monta retorno unificado
         return Response(

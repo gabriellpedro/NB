@@ -113,10 +113,12 @@ class Notificacao(models.Model):
     id_jogador_destino = models.ForeignKey(
         "Jogador", on_delete=models.CASCADE, related_name="notificacoes_recebidas"
     )
+    id_partida = models.IntegerField()  # Apenas controle numérico
     mensagem = models.TextField()
     necessita_atualizar = models.BooleanField(default=True)
     processado = models.BooleanField(default=False)
     criado_em = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
-        return f"Notificação {self.id_notificacao} para {self.id_jogador_destino.nome_jogador}"
+        return f"Notificação {self.id_notificacao} (Partida {self.id_partida})"
+
