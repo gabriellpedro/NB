@@ -1207,11 +1207,13 @@ def trocar_com_jogador_esquerda(jogador, casa, acao):
 
     cartas_origem = (
         json.loads(baralho_origem.lista_de_cartas)
-        if baralho_origem.lista_de_cartas else []
+        if baralho_origem.lista_de_cartas
+        else []
     )
     cartas_destino = (
         json.loads(baralho_destino.lista_de_cartas)
-        if baralho_destino.lista_de_cartas else []
+        if baralho_destino.lista_de_cartas
+        else []
     )
 
     # Faz a troca
@@ -1235,6 +1237,68 @@ def trocar_com_jogador_esquerda(jogador, casa, acao):
     }
 
 
+def doar_carta(jogador, id_jogador_destino, id_carta):
+    """
+    Doe uma carta específica a outro jogador.
+    """
+    try:
+        jogador_destino = Jogador.objects.get(id_jogador=id_jogador_destino)
+    except Jogador.DoesNotExist:
+        return {"mensagem": "Jogador destino não encontrado."}
+
+    partida = jogador.id_partida
+    if not partida:
+        return {"mensagem": "Jogador não está vinculado a uma partida."}
+
+    # Carrega os baralhos
+    baralho_origem, _ = Baralho.objects.get_or_create(
+        id_jogador=jogador, id_partida=partida
+    )
+    baralho_destino, _ = Baralho.objects.get_or_create(
+        id_jogador=jogador_destino, id_partida=partida
+    )
+
+    cartas_origem = (
+        json.loads(baralho_origem.lista_de_cartas)
+        if baralho_origem.lista_de_cartas
+        else []
+    )
+    cartas_destino = (
+        json.loads(baralho_destino.lista_de_cartas)
+        if baralho_destino.lista_de_cartas
+        else []
+    )
+
+    if id_carta not in cartas_origem:
+        return {"mensagem": f"Carta {id_carta} não encontrada no baralho do jogador."}
+
+    # Remove a carta do jogador origem
+    cartas_origem.remove(id_carta)
+
+    # Adiciona ao jogador destino
+    cartas_destino.append(id_carta)
+
+    # Salva os baralhos
+    baralho_origem.lista_de_cartas = json.dumps(cartas_origem)
+    baralho_destino.lista_de_cartas = json.dumps(cartas_destino)
+    baralho_origem.save()
+    baralho_destino.save()
+
+    return {
+        "mensagem": f"{jogador.nome_jogador} doou a carta {id_carta} para {jogador_destino.nome_jogador}.",
+        "jogador_origem": {
+            "id": jogador.id_jogador,
+            "nome": jogador.nome_jogador,
+            "cartas_finais": cartas_origem,
+        },
+        "jogador_destino": {
+            "id": jogador_destino.id_jogador,
+            "nome": jogador_destino.nome_jogador,
+            "cartas_finais": cartas_destino,
+        },
+    }
+
+
 # ======================================================
 # ENDPOINT PRINCIPAL
 # ======================================================
@@ -1245,6 +1309,8 @@ def executar_acao_casa(request):
     try:
         id_jogador = request.data.get("id_jogador")
         id_casa = request.data.get("id_casa")
+        id_jogador_destino = request.data.get("id_jogador_destino")  # Novo
+        id_carta = request.data.get("id_carta")  # Novo
 
         if not id_jogador or not id_casa:
             return Response(
@@ -1272,6 +1338,16 @@ def executar_acao_casa(request):
 
         elif acao.id_acao == 8:  # Trocar com jogador à esquerda
             resultado = trocar_com_jogador_esquerda(jogador, casa, acao)
+
+        elif acao.id_acao == 10:  # Doe 1 carta a alguém
+            id_jogador_destino = request.data.get("id_jogador_destino")
+            id_carta = request.data.get("id_carta")
+            if not id_jogador_destino or not id_carta:
+                return Response(
+                    {"erro": "id_jogador_destino e id_carta são obrigatórios."},
+                    status=400,
+                )
+            resultado = doar_carta(jogador, id_jogador_destino, id_carta)
 
         # Monta retorno unificado
         return Response(

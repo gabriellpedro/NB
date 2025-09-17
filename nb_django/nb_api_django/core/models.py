@@ -103,3 +103,20 @@ class Elogio(models.Model):
 
     def __str__(self):
         return f"Elogio de {self.jogador_origem.nome_jogador} para {self.jogador_destino.nome_jogador} na Partida {self.id_partida.id_partida}"
+
+
+class Notificacao(models.Model):
+    id_notificacao = models.AutoField(primary_key=True)
+    id_jogador_origem = models.ForeignKey(
+        "Jogador", on_delete=models.CASCADE, related_name="notificacoes_enviadas"
+    )
+    id_jogador_destino = models.ForeignKey(
+        "Jogador", on_delete=models.CASCADE, related_name="notificacoes_recebidas"
+    )
+    mensagem = models.TextField()
+    necessita_atualizar = models.BooleanField(default=True)
+    processado = models.BooleanField(default=False)
+    criado_em = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"Notificação {self.id_notificacao} para {self.id_jogador_destino.nome_jogador}"
