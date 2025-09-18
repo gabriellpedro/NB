@@ -1,5 +1,6 @@
 import json
 import random
+import traceback
 from django.shortcuts import render
 from django.http import JsonResponse
 from django.views import View
@@ -879,7 +880,17 @@ def jogador_esquerda(request, id_jogador):
         jogador_esquerda_id = get_jogador_esquerda(jogador)
         if not jogador_esquerda_id:
             return Response({"mensagem": "Não há jogador à esquerda."}, status=404)
-        return Response({"id_jogador_esquerda": jogador_esquerda_id}, status=200)
+
+        jogador_esquerda = Jogador.objects.get(id_jogador=jogador_esquerda_id)
+
+        return Response(
+            {
+                "id_jogador_esquerda": int(jogador_esquerda.id_jogador),
+                "nome_jogador_esquerda": jogador_esquerda.nome_jogador,
+            },
+            status=200,
+        )
+
     except Jogador.DoesNotExist:
         return Response({"erro": "Jogador não encontrado."}, status=404)
 
@@ -891,7 +902,17 @@ def jogador_direita(request, id_jogador):
         jogador_direita_id = get_jogador_direita(jogador)
         if not jogador_direita_id:
             return Response({"mensagem": "Não há jogador à direita."}, status=404)
-        return Response({"id_jogador_direita": jogador_direita_id}, status=200)
+
+        jogador_direita = Jogador.objects.get(id_jogador=jogador_direita_id)
+
+        return Response(
+            {
+                "id_jogador_direita": int(jogador_direita.id_jogador),
+                "nome_jogador_direita": jogador_direita.nome_jogador,
+            },
+            status=200,
+        )
+
     except Jogador.DoesNotExist:
         return Response({"erro": "Jogador não encontrado."}, status=404)
 
@@ -1570,6 +1591,184 @@ def doar_carta(jogador, id_jogador_destino, id_carta):
     }
 
 
+def entregar_carta_jogador_direita(jogador, casa):
+    """
+    Pega 1 carta aleatória disponível e entrega ao jogador à direita.
+    Registra notificação para o jogador destino.
+    Percorre a sequência de cores até encontrar um jogador válido.
+    """
+    controle = ControlePartida.objects.filter(id_partida=jogador.id_partida).first()
+    if not controle:
+        raise Exception("Controle da partida não encontrado.")
+
+    entregues_ids = []
+    if controle.cartas_jogadores:
+        entregues_ids += json.loads(controle.cartas_jogadores)
+    if controle.cartas_descartadas:
+        entregues_ids += json.loads(controle.cartas_descartadas)
+
+    cores = ["amarelo", "azul", "preto", "roxo"]
+    cor_atual = jogador.cor_jogador.lower().strip()
+    idx_atual = cores.index(cor_atual)
+
+    # Busca jogador à direita válido
+    prox_idx = (idx_atual + 1) % len(cores)
+    jogador_destino_id = None
+    tentativas = 0
+
+    while tentativas < len(cores):
+        cor_prox = cores[prox_idx]
+        candidato_id = getattr(jogador.id_partida, f"id_jogador_{cor_prox}", None)
+
+        # precisa ser um jogador válido e diferente do atual
+        if candidato_id and candidato_id != jogador.id_jogador:
+            jogador_destino_id = candidato_id
+            break
+
+        prox_idx = (prox_idx + 1) % len(cores)
+        tentativas += 1
+
+    if not jogador_destino_id:
+        return {"mensagem": "Não há jogador válido à direita para receber a carta."}
+
+    jogador_destino = Jogador.objects.get(id_jogador=jogador_destino_id)
+
+    # Seleciona carta aleatória disponível
+    todas_cartas = BaralhoCadastro.objects.all()
+    carta_escolhida = next(
+        (c for c in todas_cartas if c.id_carta not in entregues_ids), None
+    )
+    if not carta_escolhida:
+        return {"mensagem": "Não há cartas disponíveis para entregar."}
+
+    entregues_ids.append(carta_escolhida.id_carta)
+
+    # Adiciona carta ao baralho do jogador destino
+    baralho_destino, _ = Baralho.objects.get_or_create(
+        id_jogador=jogador_destino, id_partida=jogador.id_partida
+    )
+    lista_cartas = (
+        json.loads(baralho_destino.lista_de_cartas)
+        if baralho_destino.lista_de_cartas
+        else []
+    )
+    lista_cartas.append(carta_escolhida.id_carta)
+    baralho_destino.lista_de_cartas = json.dumps(lista_cartas)
+    baralho_destino.save()
+
+    # Atualiza controle
+    controle.cartas_jogadores = json.dumps(entregues_ids)
+    controle.save()
+
+    # Cria notificação
+    Notificacao.objects.create(
+        id_jogador_origem=jogador,
+        id_jogador_destino=jogador_destino,
+        id_partida=jogador.id_partida.id_partida,
+        mensagem=f"Recebeu uma carta de {jogador.nome_jogador}",
+    )
+
+    return {
+        "cartas_adicionadas": [
+            {
+                "id_carta": carta_escolhida.id_carta,
+                "nome": carta_escolhida.nome_carta,
+                "tipo": carta_escolhida.tipo_carta,
+            }
+        ]
+    }
+
+
+def entregar_carta_jogador_frente(jogador, casa):
+    """
+    Pega 1 carta aleatória disponível e entrega ao jogador à frente (pula 1 jogador).
+    Registra notificação para o jogador destino.
+    Percorre a sequência de cores até encontrar um jogador válido diferente do atual.
+    """
+    controle = ControlePartida.objects.filter(id_partida=jogador.id_partida).first()
+    if not controle:
+        raise Exception("Controle da partida não encontrado.")
+
+    entregues_ids = []
+    if controle.cartas_jogadores:
+        entregues_ids += json.loads(controle.cartas_jogadores)
+    if controle.cartas_descartadas:
+        entregues_ids += json.loads(controle.cartas_descartadas)
+
+    cores = ["amarelo", "azul", "preto", "roxo"]
+    cor_atual = jogador.cor_jogador.lower().strip()
+    idx_atual = cores.index(cor_atual)
+
+    # Busca jogador à frente válido (pula 1)
+    prox_idx = (idx_atual + 2) % len(cores)
+    jogador_destino_id = None
+    tentativas = 0
+
+    while tentativas < len(cores):
+        cor_prox = cores[prox_idx]
+        candidato_id = getattr(jogador.id_partida, f"id_jogador_{cor_prox}", None)
+
+        # precisa ser um jogador válido e DIFERENTE do atual
+        if candidato_id and int(candidato_id) != int(jogador.id_jogador):
+            jogador_destino_id = candidato_id
+            break
+
+        # pula para o próximo
+        prox_idx = (prox_idx + 1) % len(cores)
+        tentativas += 1
+
+    if not jogador_destino_id:
+        return {"mensagem": "Não há jogador válido à frente para receber a carta."}
+
+    jogador_destino = Jogador.objects.get(id_jogador=jogador_destino_id)
+
+    # Seleciona carta aleatória disponível
+    todas_cartas = BaralhoCadastro.objects.all()
+    carta_escolhida = next(
+        (c for c in todas_cartas if c.id_carta not in entregues_ids), None
+    )
+    if not carta_escolhida:
+        return {"mensagem": "Não há cartas disponíveis para entregar."}
+
+    entregues_ids.append(carta_escolhida.id_carta)
+
+    # Adiciona carta ao baralho do jogador destino
+    baralho_destino, _ = Baralho.objects.get_or_create(
+        id_jogador=jogador_destino, id_partida=jogador.id_partida
+    )
+    lista_cartas = (
+        json.loads(baralho_destino.lista_de_cartas)
+        if baralho_destino.lista_de_cartas
+        else []
+    )
+    lista_cartas.append(carta_escolhida.id_carta)
+    baralho_destino.lista_de_cartas = json.dumps(lista_cartas)
+    baralho_destino.save()
+
+    # Atualiza controle
+    controle.cartas_jogadores = json.dumps(entregues_ids)
+    controle.save()
+
+    # Cria notificação
+    Notificacao.objects.create(
+        id_jogador_origem=jogador,
+        id_jogador_destino=jogador_destino,
+        id_partida=jogador.id_partida.id_partida,
+        mensagem=f"Recebeu uma carta de {jogador.nome_jogador}",
+    )
+
+    return {
+        "cartas_adicionadas": [
+            {
+                "id_carta": carta_escolhida.id_carta,
+                "nome": carta_escolhida.nome_carta,
+                "tipo": carta_escolhida.tipo_carta,
+            }
+        ]
+    }
+
+
+
 def criar_notificacao(jogador_origem, jogador_destino, mensagem):
     """
     Cria uma notificação entre jogador_origem e jogador_destino.
@@ -1679,8 +1878,8 @@ def executar_acao_casa(request):
     try:
         id_jogador = request.data.get("id_jogador")
         id_casa = request.data.get("id_casa")
-        id_jogador_destino = request.data.get("id_jogador_destino")  # Novo
-        id_carta = request.data.get("id_carta")  # Novo
+        id_jogador_destino = request.data.get("id_jogador_destino")  # Opcional
+        id_carta = request.data.get("id_carta")  # Opcional
 
         if not id_jogador or not id_casa:
             return Response(
@@ -1710,14 +1909,13 @@ def executar_acao_casa(request):
             resultado = trocar_com_jogador_esquerda(jogador, casa, acao)
 
         elif acao.id_acao == 10:  # Doe 1 carta a alguém
-            id_jogador_destino = request.data.get("id_jogador_destino")
-            id_carta = request.data.get("id_carta")
             if not id_jogador_destino or not id_carta:
                 return Response(
                     {"erro": "id_jogador_destino e id_carta são obrigatórios."},
                     status=400,
                 )
             resultado = doar_carta(jogador, id_jogador_destino, id_carta)
+
         elif acao.id_acao == 13:  # Roubar do jogador à esquerda
             if not id_carta:
                 return Response({"erro": "id_carta é obrigatório."}, status=400)
@@ -1735,6 +1933,12 @@ def executar_acao_casa(request):
                     status=400,
                 )
             resultado = roubar_jogador_geral(jogador, id_jogador_destino, id_carta)
+
+        elif acao.id_acao == 16:  # Casa 20: entregar carta ao jogador à frente
+            resultado = entregar_carta_jogador_frente(jogador, casa)
+
+        elif acao.id_acao == 17:  # Casa 25: entregar carta ao jogador à direita
+            resultado = entregar_carta_jogador_direita(jogador, casa)
 
         # Monta retorno unificado
         return Response(
@@ -1754,4 +1958,10 @@ def executar_acao_casa(request):
     except TabuleiroCadastro.DoesNotExist:
         return Response({"erro": "Casa do tabuleiro não encontrada."}, status=404)
     except Exception as e:
+        # Mostra o traceback completo no terminal
+        print("=== ERRO NO EXECUTAR ACAO CASA ===")
+        traceback.print_exc()
+        print("=== FIM DO ERRO ===")
+
+        # Retorna mensagem genérica para o cliente
         return Response({"erro": str(e)}, status=500)

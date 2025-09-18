@@ -93,8 +93,10 @@ class DiceButton extends ConsumerWidget {
               ),
             );
 
-            // Popup 3: ações que distribuem/removem cartas ou trocam cartas
-            if ([2, 3, 4, 5, 6, 7, 8, 23, 24, 25].contains(idAcao)) {
+            // Ações que envolvem distribuição/remoção/troca de cartas
+            if (idAcao != null &&
+                [2, 3, 4, 5, 6, 7, 8, 10, 13, 14, 15, 16, 17, 23, 24, 25]
+                    .contains(idAcao)) {
               final acaoResponse = await http.post(
                 Uri.parse('http://127.0.0.1:8000/executar-acao-casa/'),
                 headers: {'Content-Type': 'application/json'},
@@ -115,7 +117,7 @@ class DiceButton extends ConsumerWidget {
                 final List<dynamic> cartasRemovidas =
                     acaoJson['cartas_removidas'] ?? [];
 
-                // Sempre mostra popup se houver mensagem ou troca de cartas
+                // Sempre mostra popup se houver mensagem ou cartas
                 if (mensagem.isNotEmpty ||
                     cartasAdicionadas.isNotEmpty ||
                     cartasRemovidas.isNotEmpty) {
@@ -130,45 +132,63 @@ class DiceButton extends ConsumerWidget {
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Text(
-                              mensagem,
-                              style: const TextStyle(
-                                  fontSize: 22, fontWeight: FontWeight.bold),
+                            const Text(
+                              "Ação concluída",
+                              style: TextStyle(
+                                fontSize: 22,
+                                fontWeight: FontWeight.bold,
+                              ),
                               textAlign: TextAlign.center,
                             ),
                             const SizedBox(height: 20),
 
-                            // Lista de cartas adicionadas/removidas (caso existam)
-                            if (cartasAdicionadas.isNotEmpty ||
-                                cartasRemovidas.isNotEmpty)
-                              ConstrainedBox(
-                                constraints:
-                                    const BoxConstraints(maxHeight: 300),
-                                child: ListView(
-                                  shrinkWrap: true,
-                                  children: [
-                                    if (cartasAdicionadas.isNotEmpty)
-                                      ...cartasAdicionadas.map((carta) =>
-                                          ListTile(
+                            // Caso especial: casas 20 e 25 -> não mostrar cartas
+                            if (idCasa == 20 || idCasa == 25)
+                              const Text(
+                                "Carta enviada",
+                                style: TextStyle(fontSize: 18),
+                                textAlign: TextAlign.center,
+                              )
+                            else ...[
+                              if (mensagem.isNotEmpty)
+                                Text(
+                                  mensagem,
+                                  style: const TextStyle(fontSize: 18),
+                                  textAlign: TextAlign.center,
+                                ),
+                              const SizedBox(height: 20),
+                              if (cartasAdicionadas.isNotEmpty ||
+                                  cartasRemovidas.isNotEmpty)
+                                ConstrainedBox(
+                                  constraints:
+                                      const BoxConstraints(maxHeight: 300),
+                                  child: ListView(
+                                    shrinkWrap: true,
+                                    children: [
+                                      if (cartasAdicionadas.isNotEmpty)
+                                        ...cartasAdicionadas.map(
+                                          (carta) => ListTile(
                                             leading: const Icon(Icons.add,
                                                 color: Colors.green),
                                             title: Text(carta['nome']),
                                             subtitle:
                                                 const Text("Carta recebida"),
-                                          )),
-                                    if (cartasRemovidas.isNotEmpty)
-                                      ...cartasRemovidas
-                                          .map((carta) => ListTile(
-                                                leading: const Icon(
-                                                    Icons.remove,
-                                                    color: Colors.red),
-                                                title: Text(carta['nome']),
-                                                subtitle:
-                                                    const Text("Carta perdida"),
-                                              )),
-                                  ],
+                                          ),
+                                        ),
+                                      if (cartasRemovidas.isNotEmpty)
+                                        ...cartasRemovidas.map(
+                                          (carta) => ListTile(
+                                            leading: const Icon(Icons.remove,
+                                                color: Colors.red),
+                                            title: Text(carta['nome']),
+                                            subtitle:
+                                                const Text("Carta perdida"),
+                                          ),
+                                        ),
+                                    ],
+                                  ),
                                 ),
-                              ),
+                            ],
 
                             const SizedBox(height: 20),
                             ElevatedButton(
