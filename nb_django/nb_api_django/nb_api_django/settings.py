@@ -86,10 +86,21 @@ WSGI_APPLICATION = "nb_api_django.wsgi.application"
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
+# DATABASES = {
+#     "default": {
+#         "ENGINE": "django.db.backends.sqlite3",
+#         "NAME": BASE_DIR / "banco_nb.sqlite3",
+#     }
+# }
+
 DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.sqlite3",
-        "NAME": BASE_DIR / "banco_nb.sqlite3",
+    'default': {
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': 'postgres',  # Nome do banco que o Supabase criou
+        'USER': 'postgres.qkmvrvqrnjevrizaqbam', 
+        'PASSWORD': 'NBsupabanco02', 
+        'HOST': 'aws-1-us-east-2.pooler.supabase.com',  # Host do Supabase
+        'PORT': '6543',
     }
 }
 
