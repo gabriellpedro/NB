@@ -46,6 +46,33 @@ class Jogador(models.Model):
         return self.nome_jogador
 
 
+class ControleJogador(models.Model):
+    id_controle_jogador = models.AutoField(primary_key=True)
+    id_partida = models.ForeignKey(
+        "Partida", on_delete=models.CASCADE, related_name="controles_jogadores"
+    )
+    id_jogador = models.ForeignKey(
+        "JogadorPartida", on_delete=models.CASCADE, related_name="controles"
+    )
+
+    # Número de rodadas que o jogador deve ficar sem jogar
+    sem_jogar_rodadas = models.IntegerField(default=0)
+
+    # Número de vezes extras que o jogador terá para jogar em sua rodada
+    vezes_extra = models.IntegerField(default=0)
+
+    atualizado_em = models.DateTimeField(auto_now=True)
+    criado_em = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ("id_partida", "id_jogador")
+        verbose_name = "Controle de Jogador"
+        verbose_name_plural = "Controles de Jogadores"
+
+    def __str__(self):
+        return f"ControleJogador - Partida {self.id_partida.id_partida}, Jogador {self.id_jogador.id_jogador}"
+
+
 class Baralho(models.Model):
     id_baralho = models.AutoField(primary_key=True)
     id_partida = models.ForeignKey("Partida", on_delete=models.CASCADE)
@@ -121,4 +148,3 @@ class Notificacao(models.Model):
 
     def __str__(self):
         return f"Notificação {self.id_notificacao} (Partida {self.id_partida})"
-
