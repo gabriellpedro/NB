@@ -97,12 +97,63 @@ class DiceButton extends ConsumerWidget {
             if (idAcao != null &&
                 [2, 3, 4, 5, 6, 7, 8, 10, 13, 14, 15, 16, 17, 23, 24, 25]
                     .contains(idAcao)) {
+              String? tipoCartaSelecionada;
+
+              // Popup especial para ação 5
+              if (idAcao == 5) {
+                tipoCartaSelecionada = await showDialog<String>(
+                  context: context,
+                  builder: (_) => Dialog(
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Text(
+                            "Escolha o tipo de carta que deseja receber:",
+                            style: TextStyle(fontSize: 18),
+                            textAlign: TextAlign.center,
+                          ),
+                          const SizedBox(height: 20),
+                          ElevatedButton(
+                            onPressed: () =>
+                                Navigator.of(context).pop("inicio"),
+                            child: const Text("Início"),
+                          ),
+                          const SizedBox(height: 20),
+                          ElevatedButton(
+                            onPressed: () => Navigator.of(context).pop("meio"),
+                            child: const Text("Meio"),
+                          ),
+                          const SizedBox(height: 20),
+                          ElevatedButton(
+                            onPressed: () => Navigator.of(context).pop("final"),
+                            child: const Text("Final"),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+
+                // Se o usuário fechar sem escolher
+                if (tipoCartaSelecionada == null) return;
+              }
+
+              // Chama a API passando o tipo da carta apenas se idAcao == 5
+              final acaoBody = {
+                'id_jogador': jogador.idJogador,
+                'id_casa': idCasa,
+                if (idAcao == 5) 'tipo_carta': tipoCartaSelecionada,
+              };
+
               final acaoResponse = await http.post(
                 Uri.parse('http://127.0.0.1:8000/executar-acao-casa/'),
                 headers: {'Content-Type': 'application/json'},
-                body: jsonEncode(
-                  {'id_jogador': jogador.idJogador, 'id_casa': idCasa},
-                ),
+                body: jsonEncode(acaoBody),
               );
 
               if (acaoResponse.statusCode == 200) {
@@ -141,15 +192,7 @@ class DiceButton extends ConsumerWidget {
                               textAlign: TextAlign.center,
                             ),
                             const SizedBox(height: 20),
-
-                            // Caso especial: casas 20 e 25 -> não mostrar cartas
-                            if (idCasa == 20 || idCasa == 25)
-                              const Text(
-                                "Carta enviada",
-                                style: TextStyle(fontSize: 18),
-                                textAlign: TextAlign.center,
-                              )
-                            else ...[
+                            if (idCasa != 20 && idCasa != 25) ...[
                               if (mensagem.isNotEmpty)
                                 Text(
                                   mensagem,
@@ -189,7 +232,6 @@ class DiceButton extends ConsumerWidget {
                                   ),
                                 ),
                             ],
-
                             const SizedBox(height: 20),
                             ElevatedButton(
                               onPressed: () => Navigator.of(context).pop(),
