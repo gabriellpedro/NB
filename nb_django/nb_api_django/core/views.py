@@ -1046,7 +1046,7 @@ def perder_carta(jogador, casa, acao):
     }
 
 
-def ganhar_carta(jogador, casa, acao):
+def ganhar_carta(jogador, casa, acao, tipo_carta=None):
     """Executa a lógica de adicionar carta ao jogador."""
     controle = ControlePartida.objects.filter(id_partida=jogador.id_partida).first()
     if not controle:
@@ -1075,15 +1075,26 @@ def ganhar_carta(jogador, casa, acao):
                 return c
         return None
 
-    tipos_a_distribuir = {
-        2: ["final"],
-        3: ["meio"],
-        4: ["inicio"],
-        5: ["inicio", "meio", "final"],
-    }.get(acao.id_acao, [])
+    # Regras normais (ações 2,3,4)
+    if acao.id_acao in [2, 3, 4]:
+        tipos_a_distribuir = {
+            2: ["final"],
+            3: ["meio"],
+            4: ["inicio"],
+        }[acao.id_acao]
 
-    for tipo in tipos_a_distribuir:
-        carta = buscar_carta_disponivel(tipo)
+        for tipo in tipos_a_distribuir:
+            carta = buscar_carta_disponivel(tipo)
+            if carta:
+                lista_cartas_jogador.append(carta.id_carta)
+                cartas_adicionadas.append(carta)
+
+    # Regra especial (ação 5)
+    elif acao.id_acao == 5:
+        if not tipo_carta or tipo_carta.lower() not in ["inicio", "meio", "final"]:
+            raise Exception("É necessário informar um tipo de carta válido: 'inicio', 'meio' ou 'final'.")
+        
+        carta = buscar_carta_disponivel(tipo_carta.lower())
         if carta:
             lista_cartas_jogador.append(carta.id_carta)
             cartas_adicionadas.append(carta)
@@ -1104,6 +1115,7 @@ def ganhar_carta(jogador, casa, acao):
             for c in cartas_adicionadas
         ]
     }
+
 
 
 def trocar_com_jogador_frente(jogador, casa, acao):
@@ -1853,8 +1865,12 @@ def executar_acao_casa(request):
         if acao.id_acao in [23, 24, 25]:
             resultado = perder_carta(jogador, casa, acao)
 
-        elif acao.id_acao in [2, 3, 4, 5]:
+        elif acao.id_acao in [2, 3, 4]:
             resultado = ganhar_carta(jogador, casa, acao)
+
+        elif acao.id_acao == 5:
+            tipo_carta = request.data.get("tipo_carta")
+            resultado = ganhar_carta(jogador, casa, acao, tipo_carta=tipo_carta)
 
         elif acao.id_acao == 6:  # Troca com jogador à frente
             resultado = trocar_com_jogador_frente(jogador, casa, acao)
