@@ -1,7 +1,7 @@
 // ignore_for_file: prefer_const_constructors, sort_child_properties_last
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:nb_game/model/game_request_model.dart';
 import 'package:nb_game/provider/user_provider.dart';
 import 'package:nb_game/widgets/build_card.dart';
 import 'package:nb_game/widgets/get_color.dart';
@@ -25,30 +25,55 @@ class CardConstructor extends ConsumerWidget {
           );
         }
 
+        final pageController = PageController(viewportFraction: 0.15);
+
         return SizedBox(
           height: 300,
-          child: PageView.builder(
-            itemCount: cartas.length,
-            controller: PageController(viewportFraction: 0.15),
-            itemBuilder: (context, index) => Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-              child: buildCard(
-                title: Text(
-                  cartas[index].nomeCarta,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
+          child: ScrollConfiguration(
+            behavior: const ScrollBehavior()
+                .copyWith(scrollbars: false), // Remove scrollbars nativos pequenos
+            child: RawScrollbar(
+              thumbColor: Colors.blueGrey,
+              radius: const Radius.circular(8),
+              thickness: 12, // Tamanho maior da barra
+              crossAxisMargin: 2,
+              mainAxisMargin: 2,
+              controller: pageController,
+              child: Listener(
+                onPointerSignal: (pointerSignal) {
+                  if (pointerSignal is PointerScrollEvent) {
+                    // Permite rolar pelo scroll do mouse
+                    pageController.position.moveTo(
+                      pageController.position.pixels + pointerSignal.scrollDelta.dy,
+                    );
+                  }
+                },
+                child: PageView.builder(
+                  itemCount: cartas.length,
+                  controller: pageController,
+                  scrollDirection: Axis.horizontal,
+                  itemBuilder: (context, index) => Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    child: buildCard(
+                      title: Text(
+                        cartas[index].nomeCarta,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
+                      description: Text(
+                        cartas[index].descricaoCarta,
+                        textAlign: TextAlign.justify,
+                        style: const TextStyle(fontSize: 16),
+                      ),
+                      color: getColorFromString(
+                        cartas[index].corCarta,
+                      ),
+                    ),
                   ),
-                ),
-                description: Text(
-                  cartas[index].descricaoCarta,
-                  textAlign: TextAlign.justify,
-                  style: const TextStyle(fontSize: 16),
-                ),
-                color: getColorFromString(
-                  cartas[index].corCarta,
                 ),
               ),
             ),
