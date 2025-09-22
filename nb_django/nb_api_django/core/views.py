@@ -1112,23 +1112,18 @@ def trocar_com_jogador_frente(jogador, casa, acao):
       - Se só houver 1 jogador na partida → não faz nada
       - Se houver apenas 2 jogadores → troca com o outro
       - Se houver 3 ou mais jogadores → troca com o segundo próximo válido (não o imediato)
-      - Atualiza as listas de cartas de ambos no banco
     """
     partida = jogador.id_partida
     if not partida:
         return {"mensagem": "Jogador não está vinculado a uma partida."}
 
-    # Mapeamento da ordem das cores
     ordem_cores = ["amarelo", "azul", "preto", "roxo"]
-
-    # Descobre a posição do jogador atual
     cor_atual = jogador.cor_jogador.lower()
     if cor_atual not in ordem_cores:
         return {"mensagem": f"A cor {cor_atual} não é válida para troca."}
 
     idx_atual = ordem_cores.index(cor_atual)
 
-    # Monta lista de jogadores ativos
     jogadores_ids = {
         "amarelo": partida.id_jogador_amarelo,
         "azul": partida.id_jogador_azul,
@@ -1140,21 +1135,18 @@ def trocar_com_jogador_frente(jogador, casa, acao):
     if len(jogadores_ativos) <= 1:
         return {"mensagem": "Não há outros jogadores para realizar a troca."}
 
-    # Define quantos passos dar (1 se só houver 2 jogadores, 2 caso contrário)
     passos = 1 if len(jogadores_ativos) == 2 else 2
 
-    # Busca jogador destino com base nos passos
     prox_idx = idx_atual
     jogador_destino_id = None
-    tentativas = 0
-    encontrados = 0
-    while tentativas < len(ordem_cores) * 2:  # segurança contra loop infinito
+    tentativas, encontrados = 0, 0
+    while tentativas < len(ordem_cores) * 2:
         prox_idx = (prox_idx + 1) % len(ordem_cores)
         cor_prox = ordem_cores[prox_idx]
         jogador_id = jogadores_ids.get(cor_prox)
         if jogador_id:
             encontrados += 1
-            if encontrados == passos:  # achou o jogador certo
+            if encontrados == passos:
                 jogador_destino_id = jogador_id
                 break
         tentativas += 1
@@ -1162,13 +1154,8 @@ def trocar_com_jogador_frente(jogador, casa, acao):
     if not jogador_destino_id:
         return {"mensagem": "Nenhum jogador válido encontrado para troca."}
 
-    # Carrega o objeto destino
-    try:
-        jogador_destino = Jogador.objects.get(id_jogador=jogador_destino_id)
-    except Jogador.DoesNotExist:
-        return {"mensagem": "Jogador destino não encontrado."}
+    jogador_destino = Jogador.objects.get(id_jogador=jogador_destino_id)
 
-    # Carrega baralhos de origem e destino
     baralho_origem, _ = Baralho.objects.get_or_create(
         id_jogador=jogador, id_partida=partida
     )
@@ -1176,22 +1163,21 @@ def trocar_com_jogador_frente(jogador, casa, acao):
         id_jogador=jogador_destino, id_partida=partida
     )
 
-    cartas_origem = (
-        json.loads(baralho_origem.lista_de_cartas)
-        if baralho_origem.lista_de_cartas
-        else []
-    )
-    cartas_destino = (
-        json.loads(baralho_destino.lista_de_cartas)
-        if baralho_destino.lista_de_cartas
-        else []
-    )
+    cartas_origem = json.loads(baralho_origem.lista_de_cartas or "[]")
+    cartas_destino = json.loads(baralho_destino.lista_de_cartas or "[]")
 
-    # Faz a troca
     baralho_origem.lista_de_cartas = json.dumps(cartas_destino)
     baralho_destino.lista_de_cartas = json.dumps(cartas_origem)
     baralho_origem.save()
     baralho_destino.save()
+
+    # Cria notificações para ambos
+    criar_notificacao(
+        jogador, jogador_destino, "Seu baralho foi trocado com outro jogador."
+    )
+    criar_notificacao(
+        jogador_destino, jogador, "Seu baralho foi trocado com outro jogador."
+    )
 
     return {
         "mensagem": f"Cartas trocadas entre {jogador.nome_jogador} e {jogador_destino.nome_jogador}.",
@@ -1210,27 +1196,18 @@ def trocar_com_jogador_frente(jogador, casa, acao):
 
 def trocar_com_jogador_direita(jogador, casa, acao):
     """
-    Troca todas as cartas do jogador atual com o jogador à direita (próximo imediato).
-    Regras:
-      - Se só houver 1 jogador na partida → não faz nada
-      - Se houver 2 jogadores → troca com o outro
-      - Sempre pega o próximo jogador válido na ordem fixa (amarelo → azul → preto → roxo → amarelo)
-      - Atualiza as listas de cartas de ambos no banco
+    Troca todas as cartas do jogador atual com o jogador à direita.
     """
     partida = jogador.id_partida
     if not partida:
         return {"mensagem": "Jogador não está vinculado a uma partida."}
 
-    # Ordem fixa de cores
     ordem_cores = ["amarelo", "azul", "preto", "roxo"]
-
     cor_atual = jogador.cor_jogador.lower()
     if cor_atual not in ordem_cores:
         return {"mensagem": f"A cor {cor_atual} não é válida para troca."}
 
     idx_atual = ordem_cores.index(cor_atual)
-
-    # Jogadores ativos
     jogadores_ids = [
         partida.id_jogador_amarelo,
         partida.id_jogador_azul,
@@ -1238,13 +1215,15 @@ def trocar_com_jogador_direita(jogador, casa, acao):
         partida.id_jogador_roxo,
     ]
     jogadores_ativos = [j for j in jogadores_ids if j]
+
     if len(jogadores_ativos) <= 1:
         return {"mensagem": "Não há outros jogadores para realizar a troca."}
 
-    # Busca próximo jogador válido na ordem (direita)
-    prox_idx = (idx_atual + 1) % len(ordem_cores)
-    jogador_destino_id = None
-    tentativas = 0
+    prox_idx, jogador_destino_id, tentativas = (
+        (idx_atual + 1) % len(ordem_cores),
+        None,
+        0,
+    )
     while tentativas < len(ordem_cores):
         cor_prox = ordem_cores[prox_idx]
         jogador_destino_id = getattr(partida, f"id_jogador_{cor_prox}", None)
@@ -1256,12 +1235,7 @@ def trocar_com_jogador_direita(jogador, casa, acao):
     if not jogador_destino_id:
         return {"mensagem": "Nenhum jogador válido encontrado para troca."}
 
-    try:
-        jogador_destino = Jogador.objects.get(id_jogador=jogador_destino_id)
-    except Jogador.DoesNotExist:
-        return {"mensagem": "Jogador destino não encontrado."}
-
-    # Baralhos
+    jogador_destino = Jogador.objects.get(id_jogador=jogador_destino_id)
     baralho_origem, _ = Baralho.objects.get_or_create(
         id_jogador=jogador, id_partida=partida
     )
@@ -1269,22 +1243,20 @@ def trocar_com_jogador_direita(jogador, casa, acao):
         id_jogador=jogador_destino, id_partida=partida
     )
 
-    cartas_origem = (
-        json.loads(baralho_origem.lista_de_cartas)
-        if baralho_origem.lista_de_cartas
-        else []
-    )
-    cartas_destino = (
-        json.loads(baralho_destino.lista_de_cartas)
-        if baralho_destino.lista_de_cartas
-        else []
-    )
+    cartas_origem = json.loads(baralho_origem.lista_de_cartas or "[]")
+    cartas_destino = json.loads(baralho_destino.lista_de_cartas or "[]")
 
-    # Faz a troca
     baralho_origem.lista_de_cartas = json.dumps(cartas_destino)
     baralho_destino.lista_de_cartas = json.dumps(cartas_origem)
     baralho_origem.save()
     baralho_destino.save()
+
+    criar_notificacao(
+        jogador, jogador_destino, "Seu baralho foi trocado com o jogador à direita."
+    )
+    criar_notificacao(
+        jogador_destino, jogador, "Seu baralho foi trocado com o jogador à esquerda."
+    )
 
     return {
         "mensagem": f"Cartas trocadas entre {jogador.nome_jogador} e {jogador_destino.nome_jogador}.",
@@ -1303,27 +1275,18 @@ def trocar_com_jogador_direita(jogador, casa, acao):
 
 def trocar_com_jogador_esquerda(jogador, casa, acao):
     """
-    Troca todas as cartas do jogador atual com o jogador à esquerda (antecessor imediato).
-    Regras:
-      - Se só houver 1 jogador na partida → não faz nada
-      - Se houver 2 jogadores → troca com o outro
-      - Sempre pega o jogador válido imediatamente anterior na ordem fixa
-      - Atualiza as listas de cartas de ambos no banco
+    Troca todas as cartas do jogador atual com o jogador à esquerda.
     """
     partida = jogador.id_partida
     if not partida:
         return {"mensagem": "Jogador não está vinculado a uma partida."}
 
-    # Ordem fixa de cores
     ordem_cores = ["amarelo", "azul", "preto", "roxo"]
-
     cor_atual = jogador.cor_jogador.lower()
     if cor_atual not in ordem_cores:
         return {"mensagem": f"A cor {cor_atual} não é válida para troca."}
 
     idx_atual = ordem_cores.index(cor_atual)
-
-    # Jogadores ativos
     jogadores_ids = [
         partida.id_jogador_amarelo,
         partida.id_jogador_azul,
@@ -1331,13 +1294,15 @@ def trocar_com_jogador_esquerda(jogador, casa, acao):
         partida.id_jogador_roxo,
     ]
     jogadores_ativos = [j for j in jogadores_ids if j]
+
     if len(jogadores_ativos) <= 1:
         return {"mensagem": "Não há outros jogadores para realizar a troca."}
 
-    # Busca jogador válido à esquerda (antecessor imediato)
-    prox_idx = (idx_atual - 1) % len(ordem_cores)
-    jogador_destino_id = None
-    tentativas = 0
+    prox_idx, jogador_destino_id, tentativas = (
+        (idx_atual - 1) % len(ordem_cores),
+        None,
+        0,
+    )
     while tentativas < len(ordem_cores):
         cor_prox = ordem_cores[prox_idx]
         jogador_destino_id = getattr(partida, f"id_jogador_{cor_prox}", None)
@@ -1349,12 +1314,7 @@ def trocar_com_jogador_esquerda(jogador, casa, acao):
     if not jogador_destino_id:
         return {"mensagem": "Nenhum jogador válido encontrado para troca."}
 
-    try:
-        jogador_destino = Jogador.objects.get(id_jogador=jogador_destino_id)
-    except Jogador.DoesNotExist:
-        return {"mensagem": "Jogador destino não encontrado."}
-
-    # Baralhos
+    jogador_destino = Jogador.objects.get(id_jogador=jogador_destino_id)
     baralho_origem, _ = Baralho.objects.get_or_create(
         id_jogador=jogador, id_partida=partida
     )
@@ -1362,22 +1322,20 @@ def trocar_com_jogador_esquerda(jogador, casa, acao):
         id_jogador=jogador_destino, id_partida=partida
     )
 
-    cartas_origem = (
-        json.loads(baralho_origem.lista_de_cartas)
-        if baralho_origem.lista_de_cartas
-        else []
-    )
-    cartas_destino = (
-        json.loads(baralho_destino.lista_de_cartas)
-        if baralho_destino.lista_de_cartas
-        else []
-    )
+    cartas_origem = json.loads(baralho_origem.lista_de_cartas or "[]")
+    cartas_destino = json.loads(baralho_destino.lista_de_cartas or "[]")
 
-    # Faz a troca
     baralho_origem.lista_de_cartas = json.dumps(cartas_destino)
     baralho_destino.lista_de_cartas = json.dumps(cartas_origem)
     baralho_origem.save()
     baralho_destino.save()
+
+    criar_notificacao(
+        jogador, jogador_destino, "Seu baralho foi trocado com o jogador à esquerda."
+    )
+    criar_notificacao(
+        jogador_destino, jogador, "Seu baralho foi trocado com o jogador à direita."
+    )
 
     return {
         "mensagem": f"Cartas trocadas entre {jogador.nome_jogador} e {jogador_destino.nome_jogador}.",
@@ -1766,7 +1724,6 @@ def entregar_carta_jogador_frente(jogador, casa):
             }
         ]
     }
-
 
 
 def criar_notificacao(jogador_origem, jogador_destino, mensagem):
