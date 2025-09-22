@@ -52,7 +52,7 @@ class ControleJogador(models.Model):
         "Partida", on_delete=models.CASCADE, related_name="controles_jogadores"
     )
     id_jogador = models.ForeignKey(
-        "JogadorPartida", on_delete=models.CASCADE, related_name="controles"
+        "Jogador", on_delete=models.CASCADE, related_name="controles"
     )
 
     # Número de rodadas que o jogador deve ficar sem jogar
