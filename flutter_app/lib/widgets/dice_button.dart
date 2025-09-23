@@ -10,6 +10,26 @@ import 'package:nb_game/provider/user_provider.dart';
 class DiceButton extends ConsumerWidget {
   const DiceButton({super.key});
 
+  Future<void> decrementarCampo(
+      int idJogador, int idPartida, int idGravacao) async {
+    try {
+      final response = await http.post(
+        Uri.parse('http://127.0.0.1:8000/decrementar-controle-jogador/'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'id_jogador': idJogador,
+          'id_partida': idPartida,
+          'id_gravacao': idGravacao
+        }),
+      );
+      if (response.statusCode != 200) {
+        debugPrint("Erro ao decrementar campo: ${response.body}");
+      }
+    } catch (e) {
+      debugPrint("Erro ao chamar API decremento: $e");
+    }
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return SizedBox(
@@ -24,10 +44,67 @@ class DiceButton extends ConsumerWidget {
           final jogadorAsync = ref.read(jogadorProvider.future);
           final jogador = await jogadorAsync;
 
+          // 🔹 Consulta ControleJogador antes de jogar
+          final controleResp = await http.get(
+            Uri.parse(
+                'http://127.0.0.1:8000/consultar-controle-jogador/${jogador.idJogador}/${jogador.idPartida}/'),
+          );
+
+          int semJogar = 0;
+          int vezesExtra = 0;
+
+          if (controleResp.statusCode == 200) {
+            final controleJson =
+                jsonDecode(utf8.decode(controleResp.bodyBytes));
+            semJogar = controleJson['sem_jogar_rodadas'] ?? 0;
+            vezesExtra = controleJson['vezes_extra'] ?? 0;
+
+            // 🔹 Decrementa sem_jogar_rodadas se houver
+            if (semJogar > 0) {
+              await decrementarCampo(jogador.idJogador, jogador.idPartida, 1);
+              ref.refresh(jogadorProvider);
+
+              await showDialog(
+                context: context,
+                builder: (_) => AlertDialog(
+                  title: const Text("Atenção"),
+                  content: Text(
+                      "Você ainda tinha $semJogar rodada(s) sem jogar.\nAgora restam ${semJogar - 1}"),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      child: const Text("Ok"),
+                    )
+                  ],
+                ),
+              );
+              return; // Interrompe a jogada
+            }
+
+            // 🔹 Popup aviso vezes_extra, se houver
+            if (vezesExtra > 0) {
+              await showDialog(
+                context: context,
+                builder: (_) => AlertDialog(
+                  title: const Text("Atenção"),
+                  content:
+                      Text("Você poderá jogar mais ${vezesExtra - 1} vez(es)"),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      child: const Text("Ok"),
+                    )
+                  ],
+                ),
+              );
+            }
+          }
+
+          // 🔹 Gera resultado do dado
           final random = Random();
           final result = random.nextInt(6) + 1;
 
-          // Popup 1: resultado do dado
+          // Popup resultado do dado
           await showDialog(
             context: context,
             builder: (_) => Dialog(
@@ -52,7 +129,7 @@ class DiceButton extends ConsumerWidget {
             ),
           );
 
-          // POST para rolar o dado e atualizar posição
+          // 🔹 Chamada para rolar dado e atualizar posição
           final response = await http.post(
             Uri.parse('http://127.0.0.1:8000/rolar-dado/'),
             headers: {'Content-Type': 'application/json'},
@@ -60,48 +137,109 @@ class DiceButton extends ConsumerWidget {
                 {'id_jogador': jogador.idJogador, 'valor_dado': result}),
           );
 
-          if (response.statusCode == 200) {
-            final jsonResp = jsonDecode(utf8.decode(response.bodyBytes));
-            final novaPosicao = jsonResp['nova_posicao'];
-            final idCasa = novaPosicao['id_casa'];
-            final idAcao = novaPosicao['id_acao'];
+          if (response.statusCode != 200) return;
 
-            // Atualiza jogador localmente
-            ref.refresh(jogadorProvider); // Atualiza tela
+          final jsonResp = jsonDecode(utf8.decode(response.bodyBytes));
+          final novaPosicao = jsonResp['nova_posicao'];
+          final idCasa = novaPosicao['id_casa'];
+          final idAcao = novaPosicao['id_acao'];
 
-            // Popup 2: Nome da casa
-            await showDialog(
-              context: context,
-              builder: (_) => Dialog(
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16)),
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(novaPosicao['nome_casa'] ?? 'Nenhuma ação',
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(fontSize: 20)),
-                      const SizedBox(height: 20),
-                      ElevatedButton(
-                          onPressed: () => Navigator.of(context).pop(),
-                          child: const Text("Ok")),
-                    ],
-                  ),
+          // Atualiza jogador localmente
+          ref.refresh(jogadorProvider);
+
+          // Popup nome da casa
+          await showDialog(
+            context: context,
+            builder: (_) => Dialog(
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16)),
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(novaPosicao['nome_casa'] ?? 'Nenhuma ação',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(fontSize: 20)),
+                    const SizedBox(height: 20),
+                    ElevatedButton(
+                        onPressed: () => Navigator.of(context).pop(),
+                        child: const Text("Ok")),
+                  ],
                 ),
               ),
+            ),
+          );
+
+          // 🔹 Processa ações especiais (cartas, troca, etc.)
+          if (idAcao != null &&
+              [2, 3, 4, 5, 6, 7, 8, 10, 13, 14, 15, 16, 17, 23, 24, 25]
+                  .contains(idAcao)) {
+            String? tipoCartaSelecionada;
+
+            if (idAcao == 5) {
+              tipoCartaSelecionada = await showDialog<String>(
+                context: context,
+                builder: (_) => Dialog(
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16)),
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Text(
+                          "Escolha o tipo de carta que deseja receber:",
+                          style: TextStyle(fontSize: 18),
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 20),
+                        ElevatedButton(
+                            onPressed: () =>
+                                Navigator.of(context).pop("inicio"),
+                            child: const Text("Início")),
+                        const SizedBox(height: 20),
+                        ElevatedButton(
+                            onPressed: () => Navigator.of(context).pop("meio"),
+                            child: const Text("Meio")),
+                        const SizedBox(height: 20),
+                        ElevatedButton(
+                            onPressed: () => Navigator.of(context).pop("final"),
+                            child: const Text("Final")),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+
+              if (tipoCartaSelecionada == null) return;
+            }
+
+            final acaoBody = {
+              'id_jogador': jogador.idJogador,
+              'id_casa': idCasa,
+              if (idAcao == 5) 'tipo_carta': tipoCartaSelecionada,
+            };
+
+            final acaoResponse = await http.post(
+              Uri.parse('http://127.0.0.1:8000/executar-acao-casa/'),
+              headers: {'Content-Type': 'application/json'},
+              body: jsonEncode(acaoBody),
             );
 
-            // Ações que envolvem distribuição/remoção/troca de cartas
-            if (idAcao != null &&
-                [2, 3, 4, 5, 6, 7, 8, 10, 13, 14, 15, 16, 17, 23, 24, 25]
-                    .contains(idAcao)) {
-              String? tipoCartaSelecionada;
+            if (acaoResponse.statusCode == 200) {
+              final acaoJson = jsonDecode(utf8.decode(acaoResponse.bodyBytes));
 
-              // Popup especial para ação 5
-              if (idAcao == 5) {
-                tipoCartaSelecionada = await showDialog<String>(
+              final String mensagem = acaoJson['mensagem'] ?? "Ação concluída";
+              final List<dynamic> cartasAdicionadas =
+                  acaoJson['cartas_adicionadas'] ?? [];
+              final List<dynamic> cartasRemovidas =
+                  acaoJson['cartas_removidas'] ?? [];
+
+              if (mensagem.isNotEmpty ||
+                  cartasAdicionadas.isNotEmpty ||
+                  cartasRemovidas.isNotEmpty) {
+                await showDialog(
                   context: context,
                   builder: (_) => Dialog(
                     shape: RoundedRectangleBorder(
@@ -113,140 +251,72 @@ class DiceButton extends ConsumerWidget {
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           const Text(
-                            "Escolha o tipo de carta que deseja receber:",
-                            style: TextStyle(fontSize: 18),
+                            "Ação concluída",
+                            style: TextStyle(
+                              fontSize: 22,
+                              fontWeight: FontWeight.bold,
+                            ),
                             textAlign: TextAlign.center,
                           ),
                           const SizedBox(height: 20),
-                          ElevatedButton(
-                            onPressed: () =>
-                                Navigator.of(context).pop("inicio"),
-                            child: const Text("Início"),
-                          ),
+                          if (idCasa != 20 && idCasa != 25) ...[
+                            if (mensagem.isNotEmpty)
+                              Text(
+                                mensagem,
+                                style: const TextStyle(fontSize: 18),
+                                textAlign: TextAlign.center,
+                              ),
+                            const SizedBox(height: 20),
+                            if (cartasAdicionadas.isNotEmpty ||
+                                cartasRemovidas.isNotEmpty)
+                              ConstrainedBox(
+                                constraints:
+                                    const BoxConstraints(maxHeight: 300),
+                                child: ListView(
+                                  shrinkWrap: true,
+                                  children: [
+                                    if (cartasAdicionadas.isNotEmpty)
+                                      ...cartasAdicionadas.map(
+                                        (carta) => ListTile(
+                                          leading: const Icon(Icons.add,
+                                              color: Colors.green),
+                                          title: Text(carta['nome']),
+                                          subtitle:
+                                              const Text("Carta recebida"),
+                                        ),
+                                      ),
+                                    if (cartasRemovidas.isNotEmpty)
+                                      ...cartasRemovidas.map(
+                                        (carta) => ListTile(
+                                          leading: const Icon(Icons.remove,
+                                              color: Colors.red),
+                                          title: Text(carta['nome']),
+                                          subtitle: const Text("Carta perdida"),
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              ),
+                          ],
                           const SizedBox(height: 20),
                           ElevatedButton(
-                            onPressed: () => Navigator.of(context).pop("meio"),
-                            child: const Text("Meio"),
-                          ),
-                          const SizedBox(height: 20),
-                          ElevatedButton(
-                            onPressed: () => Navigator.of(context).pop("final"),
-                            child: const Text("Final"),
-                          ),
+                              onPressed: () => Navigator.of(context).pop(),
+                              child: const Text("Ok")),
                         ],
                       ),
                     ),
                   ),
                 );
-
-                // Se o usuário fechar sem escolher
-                if (tipoCartaSelecionada == null) return;
               }
 
-              // Chama a API passando o tipo da carta apenas se idAcao == 5
-              final acaoBody = {
-                'id_jogador': jogador.idJogador,
-                'id_casa': idCasa,
-                if (idAcao == 5) 'tipo_carta': tipoCartaSelecionada,
-              };
-
-              final acaoResponse = await http.post(
-                Uri.parse('http://127.0.0.1:8000/executar-acao-casa/'),
-                headers: {'Content-Type': 'application/json'},
-                body: jsonEncode(acaoBody),
-              );
-
-              if (acaoResponse.statusCode == 200) {
-                final acaoJson =
-                    jsonDecode(utf8.decode(acaoResponse.bodyBytes));
-
-                final String mensagem =
-                    acaoJson['mensagem'] ?? "Ação concluída";
-
-                final List<dynamic> cartasAdicionadas =
-                    acaoJson['cartas_adicionadas'] ?? [];
-                final List<dynamic> cartasRemovidas =
-                    acaoJson['cartas_removidas'] ?? [];
-
-                // Sempre mostra popup se houver mensagem ou cartas
-                if (mensagem.isNotEmpty ||
-                    cartasAdicionadas.isNotEmpty ||
-                    cartasRemovidas.isNotEmpty) {
-                  await showDialog(
-                    context: context,
-                    builder: (_) => Dialog(
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      child: Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Text(
-                              "Ação concluída",
-                              style: TextStyle(
-                                fontSize: 22,
-                                fontWeight: FontWeight.bold,
-                              ),
-                              textAlign: TextAlign.center,
-                            ),
-                            const SizedBox(height: 20),
-                            if (idCasa != 20 && idCasa != 25) ...[
-                              if (mensagem.isNotEmpty)
-                                Text(
-                                  mensagem,
-                                  style: const TextStyle(fontSize: 18),
-                                  textAlign: TextAlign.center,
-                                ),
-                              const SizedBox(height: 20),
-                              if (cartasAdicionadas.isNotEmpty ||
-                                  cartasRemovidas.isNotEmpty)
-                                ConstrainedBox(
-                                  constraints:
-                                      const BoxConstraints(maxHeight: 300),
-                                  child: ListView(
-                                    shrinkWrap: true,
-                                    children: [
-                                      if (cartasAdicionadas.isNotEmpty)
-                                        ...cartasAdicionadas.map(
-                                          (carta) => ListTile(
-                                            leading: const Icon(Icons.add,
-                                                color: Colors.green),
-                                            title: Text(carta['nome']),
-                                            subtitle:
-                                                const Text("Carta recebida"),
-                                          ),
-                                        ),
-                                      if (cartasRemovidas.isNotEmpty)
-                                        ...cartasRemovidas.map(
-                                          (carta) => ListTile(
-                                            leading: const Icon(Icons.remove,
-                                                color: Colors.red),
-                                            title: Text(carta['nome']),
-                                            subtitle:
-                                                const Text("Carta perdida"),
-                                          ),
-                                        ),
-                                    ],
-                                  ),
-                                ),
-                            ],
-                            const SizedBox(height: 20),
-                            ElevatedButton(
-                              onPressed: () => Navigator.of(context).pop(),
-                              child: const Text("Ok"),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  );
-                }
-
-                // Atualiza jogador após ação
+              // 🔹 Decrementa vezes_extra se houver
+              if (vezesExtra > 0) {
+                await decrementarCampo(jogador.idJogador, jogador.idPartida, 2);
                 ref.refresh(jogadorProvider);
               }
+
+              // Atualiza jogador após ação
+              ref.refresh(jogadorProvider);
             }
           }
         },

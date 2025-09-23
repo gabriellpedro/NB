@@ -8,6 +8,7 @@ from .models import (
     AcaoCadastro,
     Baralho,
     BaralhoCadastro,
+    ControleJogador,
     ControlePartida,
     Jogador,
     Notificacao,
@@ -450,6 +451,13 @@ class CriarJogadorView(APIView):
 
         # Cria o baralho inicial do jogador
         criar_baralho_para_jogador(jogador, partida)
+
+        ControleJogador.objects.create(
+            id_jogador=jogador,
+            id_partida=partida,
+            sem_jogar_rodadas=0,
+            vezes_extra=0
+        )
 
         return Response(
             {
@@ -1752,6 +1760,170 @@ def criar_notificacao(jogador_origem, jogador_destino, mensagem):
     )
     return notificacao
 
+@api_view(["POST"])
+def atualizar_controle_jogador(request):
+    """
+    Atualiza o registro de ControleJogador conforme id_gravacao:
+    - id_gravacao = 1 -> acresce valor em sem_jogar_rodadas
+    - id_gravacao = 2 -> acresce valor em vezes_extra
+    """
+    try:
+        id_partida = request.data.get("id_partida")
+        id_jogador = request.data.get("id_jogador")
+        valor = request.data.get("valor")
+        id_gravacao = request.data.get("id_gravacao")
+
+        # Valida parâmetros obrigatórios
+        if not all([id_partida, id_jogador, valor, id_gravacao]):
+            return Response(
+                {"erro": "id_partida, id_jogador, valor e id_gravacao são obrigatórios."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Converte valor para inteiro
+        try:
+            valor = int(valor)
+        except ValueError:
+            return Response({"erro": "valor deve ser um número inteiro."},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        # Busca ou cria registro de controle
+        partida = Partida.objects.get(id_partida=id_partida)
+        jogador = Jogador.objects.get(id_jogador=id_jogador)
+        controle, _ = ControleJogador.objects.get_or_create(
+            id_partida=partida,
+            id_jogador=jogador
+        )
+
+        # Atualiza coluna correta
+        if id_gravacao == 1:
+            controle.sem_jogar_rodadas += valor
+        elif id_gravacao == 2:
+            controle.vezes_extra += valor
+        else:
+            return Response(
+                {"erro": "id_gravacao inválido. Use 1 ou 2."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        controle.save()
+
+        return Response({
+            "mensagem": "Controle atualizado com sucesso.",
+            "sem_jogar_rodadas": controle.sem_jogar_rodadas,
+            "vezes_extra": controle.vezes_extra
+        }, status=status.HTTP_200_OK)
+
+    except Partida.DoesNotExist:
+        return Response({"erro": "Partida não encontrada."}, status=status.HTTP_404_NOT_FOUND)
+    except Jogador.DoesNotExist:
+        return Response({"erro": "Jogador não encontrado."}, status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        return Response({"erro": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+@api_view(["GET"])
+def consultar_controle_jogador(request, id_jogador, id_partida):
+    """
+    Consulta os valores de sem_jogar_rodadas e vezes_extra de um jogador em uma partida.
+    """
+    try:
+        jogador = Jogador.objects.get(id_jogador=id_jogador)
+        partida = Partida.objects.get(id_partida=id_partida)
+
+        controle = ControleJogador.objects.filter(
+            id_jogador=jogador,
+            id_partida=partida
+        ).first()
+
+        if not controle:
+            return Response(
+                {
+                    "mensagem": "Controle do jogador não encontrado.",
+                    "sem_jogar_rodadas": 0,
+                    "vezes_extra": 0
+                },
+                status=status.HTTP_200_OK
+            )
+
+        return Response(
+            {
+                "id_jogador": jogador.id_jogador,
+                "id_partida": partida.id_partida,
+                "sem_jogar_rodadas": controle.sem_jogar_rodadas,
+                "vezes_extra": controle.vezes_extra
+            },
+            status=status.HTTP_200_OK
+        )
+
+    except Jogador.DoesNotExist:
+        return Response({"erro": "Jogador não encontrado."}, status=status.HTTP_404_NOT_FOUND)
+    except Partida.DoesNotExist:
+        return Response({"erro": "Partida não encontrada."}, status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        return Response({"erro": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+@api_view(["POST"])
+def decrementar_controle_jogador_campo(request):
+    """
+    Decrementa 1 no campo especificado do ControleJogador.
+    
+    Request JSON:
+    {
+        "id_jogador": 1,
+        "id_partida": 2,
+        "id_gravacao": 1  # 1 = sem_jogar_rodadas, 2 = vezes_extra
+    }
+    """
+    try:
+        id_jogador = request.data.get("id_jogador")
+        id_partida = request.data.get("id_partida")
+        id_gravacao = request.data.get("id_gravacao")
+
+        if not id_jogador or not id_partida or not id_gravacao:
+            return Response(
+                {"erro": "id_jogador, id_partida e id_gravacao são obrigatórios."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        jogador = Jogador.objects.get(id_jogador=id_jogador)
+        partida = Partida.objects.get(id_partida=id_partida)
+
+        controle, created = ControleJogador.objects.get_or_create(
+            id_jogador=jogador,
+            id_partida=partida
+        )
+
+        if id_gravacao == 1:
+            if controle.sem_jogar_rodadas > 0:
+                controle.sem_jogar_rodadas -= 1
+        elif id_gravacao == 2:
+            if controle.vezes_extra > 0:
+                controle.vezes_extra -= 1
+        else:
+            return Response(
+                {"erro": "id_gravacao inválido. Use 1 ou 2."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        controle.save()
+
+        return Response(
+            {
+                "id_jogador": jogador.id_jogador,
+                "id_partida": partida.id_partida,
+                "sem_jogar_rodadas": controle.sem_jogar_rodadas,
+                "vezes_extra": controle.vezes_extra,
+                "mensagem": "Campo decrementado com sucesso."
+            },
+            status=status.HTTP_200_OK
+        )
+
+    except Jogador.DoesNotExist:
+        return Response({"erro": "Jogador não encontrado."}, status=status.HTTP_404_NOT_FOUND)
+    except Partida.DoesNotExist:
+        return Response({"erro": "Partida não encontrada."}, status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        return Response({"erro": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 @require_GET
 def notificacoes_pendentes_partida(request, partida_id):

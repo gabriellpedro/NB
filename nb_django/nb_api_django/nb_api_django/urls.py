@@ -53,4 +53,20 @@ urlpatterns = [
         views.marcar_notificacao_processada,
         name="marcar_notificacao_processada",
     ),
+    # ControleJogador
+    path(
+        "atualizar-controle-jogador/",
+        views.atualizar_controle_jogador,
+        name="atualizar_controle_jogador",
+    ),
+    path(
+        "consultar-controle-jogador/<int:id_jogador>/<int:id_partida>/",
+        views.consultar_controle_jogador,
+        name="consultar_controle_jogador",
+    ),
+    path(
+        "decrementar-controle-jogador/",
+        views.decrementar_controle_jogador_campo,
+        name="decrementar_controle_jogador",
+    ),
 ]
