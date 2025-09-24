@@ -128,8 +128,7 @@ class DiceButton extends ConsumerWidget {
                 context: context,
                 builder: (_) => AlertDialog(
                   title: const Text("Atenção"),
-                  content:
-                      Text("Você poderá jogar mais $vezesExtra vez(es)"),
+                  content: Text("Você poderá jogar mais $vezesExtra vez(es)"),
                   actions: [
                     TextButton(
                       onPressed: () => Navigator.of(context).pop(),
@@ -138,6 +137,10 @@ class DiceButton extends ConsumerWidget {
                   ],
                 ),
               );
+
+              // 🔹 Decrementa o vezes_extra imediatamente
+              await decrementarCampo(jogador.idJogador, jogador.idPartida, 2);
+              ref.refresh(jogadorProvider);
             }
           }
 
