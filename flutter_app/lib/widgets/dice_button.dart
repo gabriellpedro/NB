@@ -30,6 +30,47 @@ class DiceButton extends ConsumerWidget {
     }
   }
 
+  Future<void> atualizarControleJogador(int idJogador, int idPartida, int valor,
+      int idGravacao, BuildContext context) async {
+    try {
+      final response = await http.post(
+        Uri.parse('http://127.0.0.1:8000/atualizar-controle-jogador/'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'id_jogador': idJogador,
+          'id_partida': idPartida,
+          'valor': valor,
+          'id_gravacao': idGravacao
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        final jsonResp = jsonDecode(utf8.decode(response.bodyBytes));
+        final semJogar = jsonResp['sem_jogar_rodadas'] ?? 0;
+        final vezesExtra = jsonResp['vezes_extra'] ?? 0;
+
+        await showDialog(
+          context: context,
+          builder: (_) => AlertDialog(
+            title: const Text("Casa Especial"),
+            content: Text(
+              "Casa 18!\n$valor rodadas sem jogar aplicadas.",
+            ),
+            actions: [
+              TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text("Ok")),
+            ],
+          ),
+        );
+      } else {
+        debugPrint("Erro ao atualizar controle jogador: ${response.body}");
+      }
+    } catch (e) {
+      debugPrint("Erro ao chamar endpoint atualizar-controle-jogador: $e");
+    }
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return SizedBox(
@@ -88,7 +129,7 @@ class DiceButton extends ConsumerWidget {
                 builder: (_) => AlertDialog(
                   title: const Text("Atenção"),
                   content:
-                      Text("Você poderá jogar mais ${vezesExtra - 1} vez(es)"),
+                      Text("Você poderá jogar mais $vezesExtra vez(es)"),
                   actions: [
                     TextButton(
                       onPressed: () => Navigator.of(context).pop(),
@@ -143,6 +184,12 @@ class DiceButton extends ConsumerWidget {
           final novaPosicao = jsonResp['nova_posicao'];
           final idCasa = novaPosicao['id_casa'];
           final idAcao = novaPosicao['id_acao'];
+
+          // 🔹 Se cair na casa 18, atualiza controle_jogador automaticamente
+          if (idCasa == 18) {
+            await atualizarControleJogador(
+                jogador.idJogador, jogador.idPartida, 2, 1, context);
+          }
 
           // Atualiza jogador localmente
           ref.refresh(jogadorProvider);
