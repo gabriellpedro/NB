@@ -18,6 +18,8 @@ class GamePage extends ConsumerStatefulWidget {
 }
 
 class _GamePageState extends ConsumerState<GamePage> {
+  bool _popupAberto = false; // 🔒 Controle de popup
+
   @override
   void initState() {
     super.initState();
@@ -26,36 +28,42 @@ class _GamePageState extends ConsumerState<GamePage> {
     Future.doWhile(() async {
       await Future.delayed(const Duration(seconds: 5));
 
+      if (_popupAberto) {
+        // ⏳ Se já existe popup, não processa outro
+        return true;
+      }
+
       final jogador = await ref.read(jogadorProvider.future);
       final notificacoes =
           await ref.read(notificacoesProvider(jogador.idJogador).future);
 
-      if (notificacoes.isNotEmpty) {
+      if (notificacoes.isNotEmpty && mounted) {
         final notificacao = notificacoes.first;
 
-        if (mounted) {
-          // Mostra popup
-          showDialog(
-            context: context,
-            builder: (_) => AlertDialog(
-              title: const Text("Notificação"),
-              content: Text(notificacao["mensagem"]),
-              actions: [
-                TextButton(
-                  child: const Text("Ok"),
-                  onPressed: () async {
-                    Navigator.of(context).pop();
-                    await marcarNotificacaoProcessada(notificacao["id"]);
+        _popupAberto = true; // 🚪 Bloqueia novos popups
+        showDialog(
+          context: context,
+          barrierDismissible: false, // usuário não fecha fora do botão
+          builder: (_) => AlertDialog(
+            title: const Text("Notificação"),
+            content: Text(notificacao["mensagem"]),
+            actions: [
+              TextButton(
+                child: const Text("Ok"),
+                onPressed: () async {
+                  Navigator.of(context).pop();
+                  await marcarNotificacaoProcessada(notificacao["id"]);
 
-                    // 🔄 Dá refresh no jogador e notificações
-                    ref.refresh(jogadorProvider);
-                    ref.refresh(notificacoesProvider(jogador.idJogador));
-                  },
-                ),
-              ],
-            ),
-          );
-        }
+                  // 🔄 Dá refresh no jogador e notificações
+                  ref.refresh(jogadorProvider);
+                  ref.refresh(notificacoesProvider(jogador.idJogador));
+
+                  _popupAberto = false; // 🔓 Libera novos popups
+                },
+              ),
+            ],
+          ),
+        );
       }
 
       return true; // continua loop

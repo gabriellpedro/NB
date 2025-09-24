@@ -130,11 +130,25 @@ class _PlayerSelectionButtonState extends ConsumerState<PlayerSelectionButton> {
   // ============================
   // POPUP DE SELEÇÃO DE CARTA
   // ============================
-  void _openCardSelectionDialog(BuildContext context, int jogadorId,
-      int idJogadorAtual, int idCasa, String jogadorNome,
-      {int? idJogadorDestino}) async {
+  Future<void> _openCardSelectionDialog(
+    BuildContext context,
+    int jogadorId,
+    int idJogadorAtual,
+    int idCasa,
+    String jogadorNome, {
+    int? idJogadorDestino,
+  }) async {
     cartas = await _getCartasJogador(jogadorId);
     selectedCardId = null;
+
+    if (cartas.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("$jogadorNome não possui cartas.")),
+      );
+      return;
+    }
+
+    if (!mounted) return;
 
     showDialog(
       context: context,
@@ -171,8 +185,9 @@ class _PlayerSelectionButtonState extends ConsumerState<PlayerSelectionButton> {
             ),
             actions: [
               TextButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  child: const Text("Cancelar")),
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text("Cancelar"),
+              ),
               ElevatedButton(
                 onPressed: selectedCardId != null
                     ? () async {
@@ -198,10 +213,22 @@ class _PlayerSelectionButtonState extends ConsumerState<PlayerSelectionButton> {
   // POPUP DE SELEÇÃO DE JOGADOR (CASA 15)
   // ============================
   void _openPlayerSelectionDialog(
-      BuildContext context, int idPartida, int idJogadorAtual) async {
+    BuildContext context,
+    int idPartida,
+    int idJogadorAtual,
+  ) async {
     final jogadores = await _getJogadoresPartida(idPartida, idJogadorAtual);
     int? selectedJogadorId;
     String? selectedJogadorNome;
+
+    if (jogadores.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Nenhum jogador disponível.")),
+      );
+      return;
+    }
+
+    if (!mounted) return;
 
     showDialog(
       context: context,
@@ -240,20 +267,23 @@ class _PlayerSelectionButtonState extends ConsumerState<PlayerSelectionButton> {
             ),
             actions: [
               TextButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  child: const Text("Cancelar")),
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text("Cancelar"),
+              ),
               ElevatedButton(
                 onPressed: selectedJogadorId != null
                     ? () {
                         Navigator.of(context).pop();
-                        _openCardSelectionDialog(
-                          context,
-                          selectedJogadorId!,
-                          idJogadorAtual,
-                          15,
-                          selectedJogadorNome!,
-                          idJogadorDestino: selectedJogadorId,
-                        );
+                        WidgetsBinding.instance.addPostFrameCallback((_) {
+                          _openCardSelectionDialog(
+                            context,
+                            selectedJogadorId!,
+                            idJogadorAtual,
+                            15,
+                            selectedJogadorNome!,
+                            idJogadorDestino: selectedJogadorId,
+                          );
+                        });
                       }
                     : null,
                 child: const Text("OK"),
@@ -281,7 +311,6 @@ class _PlayerSelectionButtonState extends ConsumerState<PlayerSelectionButton> {
         } else if (idCasa == 29) {
           jogadorAlvo = await _getJogadorDireita(jogador.idJogador);
         } else if (idCasa == 15) {
-          // CASA 15: Escolher jogador alvo
           _openPlayerSelectionDialog(
               context, jogador.idPartida!, jogador.idJogador);
           return;
