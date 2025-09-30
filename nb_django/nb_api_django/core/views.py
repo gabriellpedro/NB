@@ -1058,6 +1058,83 @@ def perder_carta(jogador, casa, acao):
         ]
     }
 
+@csrf_exempt
+def descartar_carta_por_id(request, id_jogador, id_carta):
+    """Descarta uma carta específica escolhida pelo jogador."""
+
+    # Recupera jogador
+    jogador = Jogador.objects.filter(id_jogador=id_jogador).first()
+    if not jogador:
+        return JsonResponse(
+            {"mensagem": f"Jogador com id {id_jogador} não encontrado."},
+            status=404,
+        )
+
+    # Recupera baralho do jogador
+    baralho = Baralho.objects.filter(
+        id_jogador=jogador, id_partida=jogador.id_partida
+    ).first()
+
+    if not baralho or not baralho.lista_de_cartas:
+        return JsonResponse(
+            {
+                "cartas_removidas": [],
+                "mensagem": f"Jogador {jogador.nome_jogador} não possui cartas.",
+            }
+        )
+
+    lista_cartas_jogador = json.loads(baralho.lista_de_cartas)
+
+    # Verifica se a carta está no baralho do jogador
+    if id_carta not in lista_cartas_jogador:
+        return JsonResponse(
+            {
+                "cartas_removidas": [],
+                "mensagem": f"A carta {id_carta} não está no baralho do jogador {jogador.nome_jogador}.",
+            }
+        )
+
+    # Remove carta do baralho do jogador
+    lista_cartas_jogador.remove(id_carta)
+    baralho.lista_de_cartas = json.dumps(lista_cartas_jogador)
+    baralho.save()
+
+    # Recupera informações da carta removida
+    carta_removida = BaralhoCadastro.objects.get(id_carta=id_carta)
+
+    # Atualiza controle global
+    controle = ControlePartida.objects.filter(id_partida=jogador.id_partida).first()
+    if controle:
+        cartas_jogadores = (
+            json.loads(controle.cartas_jogadores) if controle.cartas_jogadores else []
+        )
+        if id_carta in cartas_jogadores:
+            cartas_jogadores.remove(id_carta)
+        controle.cartas_jogadores = json.dumps(cartas_jogadores)
+
+        descartadas = (
+            json.loads(controle.cartas_descartadas)
+            if controle.cartas_descartadas
+            else []
+        )
+        descartadas.append(id_carta)
+        controle.cartas_descartadas = json.dumps(descartadas)
+
+        controle.save()
+
+    return JsonResponse(
+        {
+            "cartas_removidas": [
+                {
+                    "id_carta": carta_removida.id_carta,
+                    "nome": carta_removida.nome_carta,
+                    "tipo": carta_removida.tipo_carta,
+                }
+            ],
+            "mensagem": f"Carta {carta_removida.nome_carta} descartada com sucesso.",
+        }
+    )
+
 
 def ganhar_carta(jogador, casa, acao, tipo_carta=None):
     """Executa a lógica de adicionar carta ao jogador."""
@@ -1201,9 +1278,7 @@ def trocar_com_jogador_frente(jogador, casa, acao):
     criar_notificacao(
         jogador, jogador_destino, "Seu baralho foi trocado com outro jogador."
     )
-    criar_notificacao(
-        jogador_destino, jogador, "Seu baralho foi trocado com outro jogador."
-    )
+
 
     return {
         "mensagem": f"Cartas trocadas entre {jogador.nome_jogador} e {jogador_destino.nome_jogador}.",
@@ -1280,9 +1355,6 @@ def trocar_com_jogador_direita(jogador, casa, acao):
     criar_notificacao(
         jogador, jogador_destino, "Seu baralho foi trocado com o jogador à direita."
     )
-    criar_notificacao(
-        jogador_destino, jogador, "Seu baralho foi trocado com o jogador à esquerda."
-    )
 
     return {
         "mensagem": f"Cartas trocadas entre {jogador.nome_jogador} e {jogador_destino.nome_jogador}.",
@@ -1358,9 +1430,6 @@ def trocar_com_jogador_esquerda(jogador, casa, acao):
 
     criar_notificacao(
         jogador, jogador_destino, "Seu baralho foi trocado com o jogador à esquerda."
-    )
-    criar_notificacao(
-        jogador_destino, jogador, "Seu baralho foi trocado com o jogador à direita."
     )
 
     return {

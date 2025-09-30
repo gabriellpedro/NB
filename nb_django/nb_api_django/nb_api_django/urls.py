@@ -69,4 +69,9 @@ urlpatterns = [
         views.decrementar_controle_jogador_campo,
         name="decrementar_controle_jogador",
     ),
+    path(
+        "jogador/<int:id_jogador>/descartar-carta/<int:id_carta>/",
+        views.descartar_carta_por_id,
+        name="descartar_carta_por_id",
+    ),
 ]
