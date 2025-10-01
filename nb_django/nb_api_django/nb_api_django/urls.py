@@ -74,4 +74,14 @@ urlpatterns = [
         views.descartar_carta_por_id,
         name="descartar_carta_por_id",
     ),
+    path(
+        "criar-elogio/",
+        views.criar_elogio,
+        name="criar_elogio",
+    ),
+        path(
+        "partida/<int:id_partida>/elogios/",
+        views.listar_elogios_partida,
+        name="listar_elogios_partida",
+    ),
 ]

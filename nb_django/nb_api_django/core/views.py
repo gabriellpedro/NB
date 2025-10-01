@@ -11,6 +11,7 @@ from .models import (
     BaralhoCadastro,
     ControleJogador,
     ControlePartida,
+    Elogio,
     Jogador,
     Notificacao,
     Partida,
@@ -1835,6 +1836,96 @@ def criar_notificacao(jogador_origem, jogador_destino, mensagem):
     )
     return notificacao
 
+@csrf_exempt
+def criar_elogio(request):
+    if request.method != "POST":
+        return JsonResponse({"erro": "Método não permitido"}, status=405)
+
+    try:
+        data = json.loads(request.body.decode("utf-8"))
+        id_origem = data.get("jogador_origem")
+        id_destino = data.get("jogador_destino")
+        mensagem = data.get("mensagem")
+
+        if not (id_origem and id_destino and mensagem):
+            return JsonResponse({"erro": "Campos obrigatórios faltando"}, status=400)
+
+        # Recupera jogadores
+        jogador_origem = Jogador.objects.get(id_jogador=id_origem)
+        jogador_destino = Jogador.objects.get(id_jogador=id_destino)
+
+        # Partida do jogador origem
+        partida = jogador_origem.id_partida
+        if not partida:
+            return JsonResponse({"erro": "Jogador de origem não está em uma partida"}, status=400)
+
+        # Cria elogio
+        elogio = Elogio.objects.create(
+            id_partida=partida,
+            jogador_origem=jogador_origem,
+            jogador_destino=jogador_destino,
+            mensagem=mensagem
+        )
+
+        # Cria notificação para o jogador destino
+        texto_notificacao = f"Você recebeu um elogio de {jogador_origem.nome_jogador}"
+        Notificacao.objects.create(
+            id_jogador_origem=jogador_origem,
+            id_jogador_destino=jogador_destino,
+            id_partida=partida.id_partida,
+            mensagem=texto_notificacao,
+            necessita_atualizar=True,
+            processado=False
+        )
+
+        return JsonResponse({
+            "sucesso": True,
+            "mensagem": "Elogio criado com sucesso",
+            "elogio": {
+                "id": elogio.id_elogio,
+                "partida": partida.id_partida,
+                "origem": jogador_origem.nome_jogador,
+                "destino": jogador_destino.nome_jogador,
+                "mensagem": elogio.mensagem,
+                "criado_em": elogio.criado_em.strftime("%Y-%m-%d %H:%M:%S"),
+            }
+        })
+
+    except Jogador.DoesNotExist:
+        return JsonResponse({"erro": "Jogador não encontrado"}, status=404)
+
+    except Exception as e:
+        return JsonResponse({"erro": str(e)}, status=500)
+    
+@csrf_exempt
+def listar_elogios_partida(request, id_partida):
+    if request.method != "GET":
+        return JsonResponse({"erro": "Método não permitido"}, status=405)
+    
+    try:
+        # Verifica se a partida existe
+        partida = Partida.objects.get(id_partida=id_partida)
+
+        # Filtra elogios da partida
+        elogios = Elogio.objects.filter(id_partida=partida).order_by("criado_em")
+
+        elogios_list = [
+            {
+                "id_elogio": elogio.id_elogio,
+                "origem": elogio.jogador_origem.nome_jogador,
+                "destino": elogio.jogador_destino.nome_jogador,
+                "mensagem": elogio.mensagem,
+                "criado_em": elogio.criado_em.strftime("%Y-%m-%d %H:%M:%S"),
+            }
+            for elogio in elogios
+        ]
+
+        return JsonResponse({"elogios": elogios_list})
+
+    except Partida.DoesNotExist:
+        return JsonResponse({"erro": "Partida não encontrada"}, status=404)
+    except Exception as e:
+        return JsonResponse({"erro": str(e)}, status=500)
 
 @api_view(["POST"])
 def atualizar_controle_jogador(request):
