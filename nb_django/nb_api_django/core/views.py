@@ -1059,6 +1059,7 @@ def perder_carta(jogador, casa, acao):
         ]
     }
 
+
 @csrf_exempt
 def descartar_carta_por_id(request, id_jogador, id_carta):
     """Descarta uma carta específica escolhida pelo jogador."""
@@ -1280,7 +1281,6 @@ def trocar_com_jogador_frente(jogador, casa, acao):
         jogador, jogador_destino, "Seu baralho foi trocado com outro jogador."
     )
 
-
     return {
         "mensagem": f"Cartas trocadas entre {jogador.nome_jogador} e {jogador_destino.nome_jogador}.",
         "jogador_origem": {
@@ -1446,6 +1446,145 @@ def trocar_com_jogador_esquerda(jogador, casa, acao):
             "cartas_finais": cartas_origem,
         },
     }
+
+
+import traceback
+import json
+from django.http import JsonResponse
+
+
+def trocar_carta_com_esquerda(jogador, id_carta_jogador, id_carta_esquerda):
+    """
+    Troca uma carta do jogador atual com uma carta do jogador à esquerda.
+    - O jogador é identificado pelo objeto `Jogador` passado.
+    - São trocadas apenas as cartas informadas no body da requisição.
+    """
+
+    try:
+        partida = jogador.id_partida
+        if not partida:
+            return {"mensagem": "Jogador não está vinculado a uma partida."}
+
+        # Define a ordem das cores
+        ordem_cores = ["amarelo", "azul", "preto", "roxo"]
+        cor_atual = jogador.cor_jogador.lower()
+
+        if cor_atual not in ordem_cores:
+            return {"mensagem": f"A cor {cor_atual} não é válida para troca."}
+
+        idx_atual = ordem_cores.index(cor_atual)
+
+        # Busca o jogador válido à esquerda (anti-horário)
+        prox_idx, jogador_esquerda_id, tentativas = (
+            (idx_atual - 1) % len(ordem_cores),
+            None,
+            0,
+        )
+        while tentativas < len(ordem_cores):
+            cor_prox = ordem_cores[prox_idx]
+            jogador_esquerda_id = getattr(partida, f"id_jogador_{cor_prox}", None)
+            if jogador_esquerda_id:
+                break
+            prox_idx = (prox_idx - 1) % len(ordem_cores)
+            tentativas += 1
+
+        if not jogador_esquerda_id:
+            return {"mensagem": "Não há jogador à esquerda válido."}
+
+        jogador_esquerda = Jogador.objects.get(id_jogador=jogador_esquerda_id)
+
+        # Recupera baralhos
+        baralho_jogador, _ = Baralho.objects.get_or_create(
+            id_jogador=jogador, id_partida=partida
+        )
+        baralho_esquerda, _ = Baralho.objects.get_or_create(
+            id_jogador=jogador_esquerda, id_partida=partida
+        )
+
+        cartas_jogador = json.loads(baralho_jogador.lista_de_cartas or "[]")
+        cartas_esquerda = json.loads(baralho_esquerda.lista_de_cartas or "[]")
+
+        # Valida se as cartas estão nos baralhos corretos
+        if int(id_carta_jogador) not in cartas_jogador:
+            return {
+                "erro": f"A carta {id_carta_jogador} não está no baralho do jogador {jogador.nome_jogador}."
+            }
+        if int(id_carta_esquerda) not in cartas_esquerda:
+            return {
+                "erro": f"A carta {id_carta_esquerda} não está no baralho do jogador {jogador_esquerda.nome_jogador}."
+            }
+
+        # Faz a troca
+        cartas_jogador.remove(int(id_carta_jogador))
+        cartas_esquerda.remove(int(id_carta_esquerda))
+        cartas_jogador.append(int(id_carta_esquerda))
+        cartas_esquerda.append(int(id_carta_jogador))
+
+        # Salva nos baralhos
+        baralho_jogador.lista_de_cartas = json.dumps(cartas_jogador)
+        baralho_esquerda.lista_de_cartas = json.dumps(cartas_esquerda)
+        baralho_jogador.save()
+        baralho_esquerda.save()
+
+        # Busca os nomes das cartas trocadas
+        carta_jogador_nome = BaralhoCadastro.objects.get(
+            id_carta=id_carta_jogador
+        ).nome_carta
+        carta_esquerda_nome = BaralhoCadastro.objects.get(
+            id_carta=id_carta_esquerda
+        ).nome_carta
+
+        # Cria notificação detalhada
+        criar_notificacao(
+            jogador,
+            jogador_esquerda,
+            f"Troca de carta entre jogadores! {jogador.nome_jogador} pegou a carta '{carta_esquerda_nome}' "
+            f"em troca da sua carta '{carta_jogador_nome}'.",
+        )
+
+        # Prepara retorno detalhado
+        cartas_origem = list(
+            BaralhoCadastro.objects.filter(id_carta__in=cartas_jogador).values(
+                "id_carta", "nome_carta"
+            )
+        )
+        cartas_destino = list(
+            BaralhoCadastro.objects.filter(id_carta__in=cartas_esquerda).values(
+                "id_carta", "nome_carta"
+            )
+        )
+
+        return {
+            "mensagem": f"Cartas trocadas entre {jogador.nome_jogador} e {jogador_esquerda.nome_jogador}.",
+            "jogador_origem": {
+                "id": jogador.id_jogador,
+                "nome": jogador.nome_jogador,
+                "cartas_finais": cartas_origem,
+            },
+            "jogador_destino": {
+                "id": jogador_esquerda.id_jogador,
+                "nome": jogador_esquerda.nome_jogador,
+                "cartas_finais": cartas_destino,
+            },
+        }
+
+    except Exception as e:
+        print("=" * 80)
+        print("ERRO AO TROCAR CARTAS ENTRE JOGADORES")
+        print(f"Jogador origem: {getattr(jogador, 'nome_jogador', '?')}")
+        print(f"id_carta_jogador: {id_carta_jogador}")
+        print(f"id_carta_esquerda: {id_carta_esquerda}")
+        print("Traceback:")
+        traceback.print_exc()
+        print("=" * 80)
+        return JsonResponse(
+            {
+                "erro": "Erro interno ao processar a troca de cartas.",
+                "detalhes": str(e),
+                "traceback": traceback.format_exc(),
+            },
+            status=400,
+        )
 
 
 def roubar_carta(jogador, jogador_destino, id_carta):
@@ -1836,6 +1975,7 @@ def criar_notificacao(jogador_origem, jogador_destino, mensagem):
     )
     return notificacao
 
+
 @csrf_exempt
 def criar_elogio(request):
     if request.method != "POST":
@@ -1857,14 +1997,16 @@ def criar_elogio(request):
         # Partida do jogador origem
         partida = jogador_origem.id_partida
         if not partida:
-            return JsonResponse({"erro": "Jogador de origem não está em uma partida"}, status=400)
+            return JsonResponse(
+                {"erro": "Jogador de origem não está em uma partida"}, status=400
+            )
 
         # Cria elogio
         elogio = Elogio.objects.create(
             id_partida=partida,
             jogador_origem=jogador_origem,
             jogador_destino=jogador_destino,
-            mensagem=mensagem
+            mensagem=mensagem,
         )
 
         # Cria notificação para o jogador destino
@@ -1875,33 +2017,36 @@ def criar_elogio(request):
             id_partida=partida.id_partida,
             mensagem=texto_notificacao,
             necessita_atualizar=True,
-            processado=False
+            processado=False,
         )
 
-        return JsonResponse({
-            "sucesso": True,
-            "mensagem": "Elogio criado com sucesso",
-            "elogio": {
-                "id": elogio.id_elogio,
-                "partida": partida.id_partida,
-                "origem": jogador_origem.nome_jogador,
-                "destino": jogador_destino.nome_jogador,
-                "mensagem": elogio.mensagem,
-                "criado_em": elogio.criado_em.strftime("%Y-%m-%d %H:%M:%S"),
+        return JsonResponse(
+            {
+                "sucesso": True,
+                "mensagem": "Elogio criado com sucesso",
+                "elogio": {
+                    "id": elogio.id_elogio,
+                    "partida": partida.id_partida,
+                    "origem": jogador_origem.nome_jogador,
+                    "destino": jogador_destino.nome_jogador,
+                    "mensagem": elogio.mensagem,
+                    "criado_em": elogio.criado_em.strftime("%Y-%m-%d %H:%M:%S"),
+                },
             }
-        })
+        )
 
     except Jogador.DoesNotExist:
         return JsonResponse({"erro": "Jogador não encontrado"}, status=404)
 
     except Exception as e:
         return JsonResponse({"erro": str(e)}, status=500)
-    
+
+
 @csrf_exempt
 def listar_elogios_partida(request, id_partida):
     if request.method != "GET":
         return JsonResponse({"erro": "Método não permitido"}, status=405)
-    
+
     try:
         # Verifica se a partida existe
         partida = Partida.objects.get(id_partida=id_partida)
@@ -1926,6 +2071,7 @@ def listar_elogios_partida(request, id_partida):
         return JsonResponse({"erro": "Partida não encontrada"}, status=404)
     except Exception as e:
         return JsonResponse({"erro": str(e)}, status=500)
+
 
 @api_view(["POST"])
 def atualizar_controle_jogador(request):
@@ -2270,6 +2416,20 @@ def executar_acao_casa(request):
 
         elif acao.id_acao == 17:  # Casa 25: entregar carta ao jogador à direita
             resultado = entregar_carta_jogador_direita(jogador, casa)
+
+        elif acao.id_acao == 18:  # Troca de carta com jogador à esquerda
+            id_carta_jogador = request.data.get("id_carta_jogador")
+            id_carta_esquerda = request.data.get("id_carta_esquerda")
+
+            if not id_carta_jogador or not id_carta_esquerda:
+                return Response(
+                    {"erro": "id_carta_jogador e id_carta_esquerda são obrigatórios."},
+                    status=400,
+                )
+
+            resultado = trocar_carta_com_esquerda(
+                jogador, id_carta_jogador, id_carta_esquerda
+            )
 
         # Monta retorno unificado
         return Response(
