@@ -101,23 +101,31 @@ class _PlayerSelectionButtonState extends ConsumerState<PlayerSelectionButton> {
     int? idJogadorDestino,
     int? idCarta,
     int? idCartaJogador,
-    int? idCartaOutro,
+    int? idCartaOutro, // Casa 17
+    int? idCartaDireita, // Casa 28
   }) async {
     Map<String, dynamic> bodyMap = {
       "id_jogador": idJogador,
       "id_casa": idCasa,
     };
 
-    // 🔹 Envio específico para casa 17 (troca de cartas)
+    // 🔹 Casa 17: troca com jogador à esquerda
     if (idCasa == 17 && idCartaJogador != null && idCartaOutro != null) {
       bodyMap["id_carta_jogador"] = idCartaJogador;
       bodyMap["id_carta_esquerda"] = idCartaOutro;
-    } else {
-      // Outras casas
+    }
+
+    // 🔹 Casa 28: troca com jogador à direita
+    if (idCasa == 28 && idCartaJogador != null && idCartaDireita != null) {
+      bodyMap["id_carta_jogador"] = idCartaJogador;
+      bodyMap["id_carta_direita"] = idCartaDireita;
+    }
+
+    // 🔹 Outras casas que usam carta ou jogador destino
+    if (idCasa != 17 && idCasa != 28) {
       if (idCarta != null) bodyMap["id_carta"] = idCarta;
-      if (idJogadorDestino != null) {
+      if (idJogadorDestino != null)
         bodyMap["id_jogador_destino"] = idJogadorDestino;
-      }
     }
 
     print("DEBUG ► Enviando body: ${jsonEncode(bodyMap)}");
@@ -226,6 +234,105 @@ class _PlayerSelectionButtonState extends ConsumerState<PlayerSelectionButton> {
                                 idCasa: 17,
                                 idCartaJogador: int.parse(selectedOwnCardId!),
                                 idCartaOutro: int.parse(selectedCardId!),
+                              );
+                              Navigator.of(context).pop();
+                            }
+                          : null,
+                  child: const Text("Confirmar Troca"),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+// ============================
+// POPUP TROCA DE CARTAS (CASA 28 - DIREITA)
+// ============================
+  Future<void> _openTrocaCartasDireitaDialog(
+    BuildContext context,
+    int idJogadorAtual,
+    int idJogadorDestino,
+    String nomeDestino,
+  ) async {
+    // Busca cartas do jogador atual e do jogador à direita
+    minhasCartas = await _getCartasJogador(idJogadorAtual);
+    cartas = await _getCartasJogador(idJogadorDestino);
+
+    selectedOwnCardId = null;
+    selectedCardId = null;
+
+    if (minhasCartas.isEmpty || cartas.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Não há cartas disponíveis para troca.")),
+      );
+      return;
+    }
+
+    if (!mounted) return;
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setStateDialog) {
+            return AlertDialog(
+              title: Text("Trocar carta com $nomeDestino"),
+              content: SizedBox(
+                width: double.maxFinite,
+                height: 420,
+                child: SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const Text("Escolha sua carta:"),
+                      ...minhasCartas.map((carta) {
+                        return RadioListTile<String>(
+                          title: Text(carta['nome_carta']),
+                          value: carta['id_carta'].toString(),
+                          groupValue: selectedOwnCardId,
+                          onChanged: (value) {
+                            setStateDialog(() {
+                              selectedOwnCardId = value;
+                            });
+                          },
+                        );
+                      }),
+                      const Divider(),
+                      Text("Escolha uma carta de $nomeDestino:"),
+                      ...cartas.map((carta) {
+                        return RadioListTile<String>(
+                          title: Text(carta['nome_carta']),
+                          value: carta['id_carta'].toString(),
+                          groupValue: selectedCardId,
+                          onChanged: (value) {
+                            setStateDialog(() {
+                              selectedCardId = value;
+                            });
+                          },
+                        );
+                      }),
+                    ],
+                  ),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text("Cancelar"),
+                ),
+                ElevatedButton(
+                  onPressed:
+                      (selectedOwnCardId != null && selectedCardId != null)
+                          ? () async {
+                              await _executarAcaoCasa(
+                                idJogador: idJogadorAtual,
+                                idCasa: 28, // Casa 28 = Troca Direita
+                                idCartaJogador: int.parse(selectedOwnCardId!),
+                                idCartaDireita:
+                                    int.parse(selectedCardId!), // ✅ CORRETO
                               );
                               Navigator.of(context).pop();
                             }
@@ -394,9 +501,9 @@ class _PlayerSelectionButtonState extends ConsumerState<PlayerSelectionButton> {
     );
   }
 
-  // ============================
-  // BOTÃO PRINCIPAL
-  // ============================
+// ============================
+// BOTÃO PRINCIPAL
+// ============================
   void _onPressedButton(BuildContext context) async {
     final jogadorAsync = ref.watch(jogadorProvider);
 
@@ -407,16 +514,28 @@ class _PlayerSelectionButtonState extends ConsumerState<PlayerSelectionButton> {
 
         if (idCasa == 11) {
           jogadorAlvo = await _getJogadorEsquerda(jogador.idJogador);
-        } else if (idCasa == 29) {
-          jogadorAlvo = await _getJogadorDireita(jogador.idJogador);
         } else if (idCasa == 15) {
           _openPlayerSelectionDialog(
-              context, jogador.idPartida, jogador.idJogador);
+            context,
+            jogador.idPartida,
+            jogador.idJogador,
+          );
           return;
         } else if (idCasa == 17) {
           jogadorAlvo = await _getJogadorEsquerda(jogador.idJogador);
           if (jogadorAlvo != null) {
             _openTrocaCartasDialog(
+              context,
+              jogador.idJogador,
+              jogadorAlvo["id"],
+              jogadorAlvo["nome"],
+            );
+          }
+          return;
+        } else if (idCasa == 28) {
+          jogadorAlvo = await _getJogadorDireita(jogador.idJogador);
+          if (jogadorAlvo != null) {
+            _openTrocaCartasDireitaDialog(
               context,
               jogador.idJogador,
               jogadorAlvo["id"],
@@ -443,9 +562,9 @@ class _PlayerSelectionButtonState extends ConsumerState<PlayerSelectionButton> {
     );
   }
 
-  // ============================
-  // BUILD
-  // ============================
+// ============================
+// BUILD
+// ============================
   @override
   Widget build(BuildContext context) {
     return Tooltip(

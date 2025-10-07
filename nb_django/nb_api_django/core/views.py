@@ -1448,11 +1448,6 @@ def trocar_com_jogador_esquerda(jogador, casa, acao):
     }
 
 
-import traceback
-import json
-from django.http import JsonResponse
-
-
 def trocar_carta_com_esquerda(jogador, id_carta_jogador, id_carta_esquerda):
     """
     Troca uma carta do jogador atual com uma carta do jogador à esquerda.
@@ -1538,8 +1533,8 @@ def trocar_carta_com_esquerda(jogador, id_carta_jogador, id_carta_esquerda):
         criar_notificacao(
             jogador,
             jogador_esquerda,
-            f"Troca de carta entre jogadores! {jogador.nome_jogador} pegou a carta '{carta_esquerda_nome}' "
-            f"em troca da sua carta '{carta_jogador_nome}'.",
+            f"Troca de carta entre jogadores! {jogador.nome_jogador} trocou a carta '{carta_jogador_nome}' dele, "
+            f"pela sua carta '{carta_esquerda_nome}'.",
         )
 
         # Prepara retorno detalhado
@@ -1580,6 +1575,140 @@ def trocar_carta_com_esquerda(jogador, id_carta_jogador, id_carta_esquerda):
         return JsonResponse(
             {
                 "erro": "Erro interno ao processar a troca de cartas.",
+                "detalhes": str(e),
+                "traceback": traceback.format_exc(),
+            },
+            status=400,
+        )
+
+
+def trocar_carta_com_direita(jogador, id_carta_jogador, id_carta_direita):
+    """
+    Troca uma carta do jogador atual com uma carta do jogador à direita.
+    - O jogador é identificado pelo objeto `Jogador` passado.
+    - São trocadas apenas as cartas informadas no body da requisição.
+    """
+
+    try:
+        partida = jogador.id_partida
+        if not partida:
+            return {"mensagem": "Jogador não está vinculado a uma partida."}
+
+        # Define a ordem das cores
+        ordem_cores = ["amarelo", "azul", "preto", "roxo"]
+        cor_atual = jogador.cor_jogador.lower()
+
+        if cor_atual not in ordem_cores:
+            return {"mensagem": f"A cor {cor_atual} não é válida para troca."}
+
+        idx_atual = ordem_cores.index(cor_atual)
+
+        # Busca o jogador válido à direita (sentido horário)
+        prox_idx, jogador_direita_id, tentativas = (
+            (idx_atual + 1) % len(ordem_cores),
+            None,
+            0,
+        )
+        while tentativas < len(ordem_cores):
+            cor_prox = ordem_cores[prox_idx]
+            jogador_direita_id = getattr(partida, f"id_jogador_{cor_prox}", None)
+            if jogador_direita_id:
+                break
+            prox_idx = (prox_idx + 1) % len(ordem_cores)
+            tentativas += 1
+
+        if not jogador_direita_id:
+            return {"mensagem": "Não há jogador à direita válido."}
+
+        jogador_direita = Jogador.objects.get(id_jogador=jogador_direita_id)
+
+        # Recupera baralhos
+        baralho_jogador, _ = Baralho.objects.get_or_create(
+            id_jogador=jogador, id_partida=partida
+        )
+        baralho_direita, _ = Baralho.objects.get_or_create(
+            id_jogador=jogador_direita, id_partida=partida
+        )
+
+        cartas_jogador = json.loads(baralho_jogador.lista_de_cartas or "[]")
+        cartas_direita = json.loads(baralho_direita.lista_de_cartas or "[]")
+
+        # Valida se as cartas estão nos baralhos corretos
+        if int(id_carta_jogador) not in cartas_jogador:
+            return {
+                "erro": f"A carta {id_carta_jogador} não está no baralho do jogador {jogador.nome_jogador}."
+            }
+        if int(id_carta_direita) not in cartas_direita:
+            return {
+                "erro": f"A carta {id_carta_direita} não está no baralho do jogador {jogador_direita.nome_jogador}."
+            }
+
+        # Faz a troca
+        cartas_jogador.remove(int(id_carta_jogador))
+        cartas_direita.remove(int(id_carta_direita))
+        cartas_jogador.append(int(id_carta_direita))
+        cartas_direita.append(int(id_carta_jogador))
+
+        # Salva nos baralhos
+        baralho_jogador.lista_de_cartas = json.dumps(cartas_jogador)
+        baralho_direita.lista_de_cartas = json.dumps(cartas_direita)
+        baralho_jogador.save()
+        baralho_direita.save()
+
+        # Busca os nomes das cartas trocadas
+        carta_jogador_nome = BaralhoCadastro.objects.get(
+            id_carta=id_carta_jogador
+        ).nome_carta
+        carta_direita_nome = BaralhoCadastro.objects.get(
+            id_carta=id_carta_direita
+        ).nome_carta
+
+        # Cria notificação detalhada
+        criar_notificacao(
+            jogador,
+            jogador_direita,
+            f"Troca de carta entre jogadores! {jogador.nome_jogador} trocou a carta '{carta_jogador_nome}' dele, "
+            f"pela sua carta '{carta_direita_nome}'.",
+        )
+
+        # Prepara retorno detalhado
+        cartas_origem = list(
+            BaralhoCadastro.objects.filter(id_carta__in=cartas_jogador).values(
+                "id_carta", "nome_carta"
+            )
+        )
+        cartas_destino = list(
+            BaralhoCadastro.objects.filter(id_carta__in=cartas_direita).values(
+                "id_carta", "nome_carta"
+            )
+        )
+
+        return {
+            "mensagem": f"Cartas trocadas entre {jogador.nome_jogador} e {jogador_direita.nome_jogador}.",
+            "jogador_origem": {
+                "id": jogador.id_jogador,
+                "nome": jogador.nome_jogador,
+                "cartas_finais": cartas_origem,
+            },
+            "jogador_destino": {
+                "id": jogador_direita.id_jogador,
+                "nome": jogador_direita.nome_jogador,
+                "cartas_finais": cartas_destino,
+            },
+        }
+
+    except Exception as e:
+        print("=" * 80)
+        print("ERRO AO TROCAR CARTAS ENTRE JOGADORES (DIREITA)")
+        print(f"Jogador origem: {getattr(jogador, 'nome_jogador', '?')}")
+        print(f"id_carta_jogador: {id_carta_jogador}")
+        print(f"id_carta_direita: {id_carta_direita}")
+        print("Traceback:")
+        traceback.print_exc()
+        print("=" * 80)
+        return JsonResponse(
+            {
+                "erro": "Erro interno ao processar a troca de cartas (direita).",
                 "detalhes": str(e),
                 "traceback": traceback.format_exc(),
             },
@@ -2365,7 +2494,7 @@ def executar_acao_casa(request):
 
         resultado = {}
 
-        # Chama a função correta conforme ação
+        # Ações padrão
         if acao.id_acao in [23, 24, 25]:
             resultado = perder_carta(jogador, casa, acao)
 
@@ -2376,16 +2505,16 @@ def executar_acao_casa(request):
             tipo_carta = request.data.get("tipo_carta")
             resultado = ganhar_carta(jogador, casa, acao, tipo_carta=tipo_carta)
 
-        elif acao.id_acao == 6:  # Troca com jogador à frente
+        elif acao.id_acao == 6:
             resultado = trocar_com_jogador_frente(jogador, casa, acao)
 
-        elif acao.id_acao == 7:  # Trocar com jogador à direita
+        elif acao.id_acao == 7:
             resultado = trocar_com_jogador_direita(jogador, casa, acao)
 
-        elif acao.id_acao == 8:  # Trocar com jogador à esquerda
+        elif acao.id_acao == 8:
             resultado = trocar_com_jogador_esquerda(jogador, casa, acao)
 
-        elif acao.id_acao == 10:  # Doe 1 carta a alguém
+        elif acao.id_acao == 10:
             if not id_jogador_destino or not id_carta:
                 return Response(
                     {"erro": "id_jogador_destino e id_carta são obrigatórios."},
@@ -2393,17 +2522,17 @@ def executar_acao_casa(request):
                 )
             resultado = doar_carta(jogador, id_jogador_destino, id_carta)
 
-        elif acao.id_acao == 13:  # Roubar do jogador à esquerda
+        elif acao.id_acao == 13:
             if not id_carta:
                 return Response({"erro": "id_carta é obrigatório."}, status=400)
             resultado = roubar_jogador_esquerda(jogador, id_carta)
 
-        elif acao.id_acao == 14:  # Roubar do jogador à direita
+        elif acao.id_acao == 14:
             if not id_carta:
                 return Response({"erro": "id_carta é obrigatório."}, status=400)
             resultado = roubar_jogador_direita(jogador, id_carta)
 
-        elif acao.id_acao == 15:  # Roubar de um jogador qualquer
+        elif acao.id_acao == 15:
             if not id_jogador_destino or not id_carta:
                 return Response(
                     {"erro": "id_jogador_destino e id_carta são obrigatórios."},
@@ -2411,10 +2540,10 @@ def executar_acao_casa(request):
                 )
             resultado = roubar_jogador_geral(jogador, id_jogador_destino, id_carta)
 
-        elif acao.id_acao == 16:  # Casa 20: entregar carta ao jogador à frente
+        elif acao.id_acao == 16:
             resultado = entregar_carta_jogador_frente(jogador, casa)
 
-        elif acao.id_acao == 17:  # Casa 25: entregar carta ao jogador à direita
+        elif acao.id_acao == 17:
             resultado = entregar_carta_jogador_direita(jogador, casa)
 
         elif acao.id_acao == 18:  # Troca de carta com jogador à esquerda
@@ -2431,7 +2560,21 @@ def executar_acao_casa(request):
                 jogador, id_carta_jogador, id_carta_esquerda
             )
 
-        # Monta retorno unificado
+        elif acao.id_acao == 19: # Troca de carta com jogador à esquerda
+            id_carta_jogador = request.data.get("id_carta_jogador")
+            id_carta_direita = request.data.get("id_carta_direita")
+
+            if not id_carta_jogador or not id_carta_direita:
+                return Response(
+                    {"erro": "id_carta_jogador e id_carta_direita são obrigatórios."},
+                    status=400,
+                )
+
+            resultado = trocar_carta_com_direita(
+                jogador, id_carta_jogador, id_carta_direita
+            )
+
+        # Retorno unificado
         return Response(
             {
                 "id_jogador": jogador.id_jogador,
@@ -2446,13 +2589,12 @@ def executar_acao_casa(request):
 
     except Jogador.DoesNotExist:
         return Response({"erro": "Jogador não encontrado."}, status=404)
+
     except TabuleiroCadastro.DoesNotExist:
         return Response({"erro": "Casa do tabuleiro não encontrada."}, status=404)
+
     except Exception as e:
-        # Mostra o traceback completo no terminal
         print("=== ERRO NO EXECUTAR ACAO CASA ===")
         traceback.print_exc()
         print("=== FIM DO ERRO ===")
-
-        # Retorna mensagem genérica para o cliente
         return Response({"erro": str(e)}, status=500)
