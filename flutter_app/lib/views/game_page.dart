@@ -7,6 +7,7 @@ import 'package:nb_game/services/notification_service.dart';
 import 'package:nb_game/widgets/board_position_widget.dart';
 import 'package:nb_game/widgets/card_constructor.dart';
 import 'package:nb_game/widgets/button_constructor.dart';
+import 'package:nb_game/widgets/evidencia_cartas.dart';
 import 'package:nb_game/widgets/name_widget.dart';
 import 'package:nb_game/widgets/round_id_label.dart';
 
@@ -29,7 +30,6 @@ class _GamePageState extends ConsumerState<GamePage> {
       await Future.delayed(const Duration(seconds: 5));
 
       if (_popupAberto) {
-        // ⏳ Se já existe popup, não processa outro
         return true;
       }
 
@@ -40,10 +40,10 @@ class _GamePageState extends ConsumerState<GamePage> {
       if (notificacoes.isNotEmpty && mounted) {
         final notificacao = notificacoes.first;
 
-        _popupAberto = true; // 🚪 Bloqueia novos popups
+        _popupAberto = true;
         showDialog(
           context: context,
-          barrierDismissible: false, // usuário não fecha fora do botão
+          barrierDismissible: false,
           builder: (_) => AlertDialog(
             title: const Text("Notificação"),
             content: Text(notificacao["mensagem"]),
@@ -53,12 +53,9 @@ class _GamePageState extends ConsumerState<GamePage> {
                 onPressed: () async {
                   Navigator.of(context).pop();
                   await marcarNotificacaoProcessada(notificacao["id"]);
-
-                  // 🔄 Dá refresh no jogador e notificações
                   ref.refresh(jogadorProvider);
                   ref.refresh(notificacoesProvider(jogador.idJogador));
-
-                  _popupAberto = false; // 🔓 Libera novos popups
+                  _popupAberto = false;
                 },
               ),
             ],
@@ -66,7 +63,7 @@ class _GamePageState extends ConsumerState<GamePage> {
         );
       }
 
-      return true; // continua loop
+      return true;
     });
   }
 
@@ -88,10 +85,9 @@ class _GamePageState extends ConsumerState<GamePage> {
                   const CardConstructor(),
                   const SizedBox(height: 50),
                   PositionWidget(
-                    position:
-                        (jogador.idCasa != null && jogador.nomeCasa != null)
-                            ? '${jogador.idCasa} - ${jogador.nomeCasa}'
-                            : 'Sem posição',
+                    position: (jogador.idCasa != null && jogador.nomeCasa != null)
+                        ? '${jogador.idCasa} - ${jogador.nomeCasa}'
+                        : 'Sem posição',
                   ),
                   const SizedBox(height: 10),
                   const SizedBox(
@@ -99,14 +95,25 @@ class _GamePageState extends ConsumerState<GamePage> {
                     child: ButtonConstuctor(),
                   ),
                   const SizedBox(height: 50),
-                  RoundIdLabelWidget(),
+
+                  // 👇 RoundIdLabelWidget + Botão Coroa lado a lado
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      RoundIdLabelWidget(),
+                      const SizedBox(width: 15),
+                      SizedBox(
+                        width: 70,
+                        height: 70,
+                        child: BotaoCoroaWidget(),
+                      ),
+                    ],
+                  ),
                 ],
               ),
             );
           },
-          loading: () => const Center(
-            child: CircularProgressIndicator(),
-          ),
+          loading: () => const Center(child: CircularProgressIndicator()),
           error: (err, _) => Center(
             child: Text(
               'Erro: $err',

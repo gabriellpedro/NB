@@ -61,6 +61,8 @@ class ControleJogador(models.Model):
     # Número de vezes extras que o jogador terá para jogar em sua rodada
     vezes_extra = models.IntegerField(default=0)
 
+    vez_perdida_31 = models.IntegerField(default=0)
+
     atualizado_em = models.DateTimeField(auto_now=True)
     criado_em = models.DateTimeField(auto_now_add=True)
 
@@ -80,6 +82,14 @@ class Baralho(models.Model):
         "Jogador", on_delete=models.SET_NULL, null=True, blank=True
     )
     lista_de_cartas = models.TextField(null=True, blank=True)
+
+    # Campos para a sequência de cartas da "história"
+    id_carta_inicio = models.IntegerField(default=0)
+    id_carta_meio = models.IntegerField(default=0)
+    id_carta_fim = models.IntegerField(default=0)
+
+    def __str__(self):
+        return f"Baralho do {self.id_jogador.nome_jogador if self.id_jogador else 'Sem jogador'}"
 
 
 class BaralhoCadastro(models.Model):
