@@ -2201,6 +2201,138 @@ def listar_elogios_partida(request, id_partida):
     except Exception as e:
         return JsonResponse({"erro": str(e)}, status=500)
 
+@api_view(["POST"])
+def atualizar_cartas_baralho(request):
+    """
+    Atualiza as colunas de id_carta_inicio, id_carta_meio ou id_carta_fim
+    do Baralho associado ao jogador.
+
+    Parâmetros esperados:
+    - id_jogador: int (obrigatório)
+    - controle: int (1 = início, 2 = meio, 3 = fim)
+    - id_carta: int (obrigatório)
+    """
+    try:
+        id_jogador = request.data.get("id_jogador")
+        controle = request.data.get("controle")
+        id_carta = request.data.get("id_carta")
+
+        # Validação básica
+        if not all([id_jogador, controle, id_carta]):
+            return Response(
+                {"erro": "id_jogador, controle e id_carta são obrigatórios."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Conversões e validações de tipo
+        try:
+            id_jogador = int(id_jogador)
+            controle = int(controle)
+            id_carta = int(id_carta)
+        except ValueError:
+            return Response(
+                {"erro": "Todos os campos devem ser números inteiros."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Busca o jogador e seu baralho
+        jogador = Jogador.objects.get(id_jogador=id_jogador)
+        baralho = Baralho.objects.get(id_jogador=jogador)
+
+        # Atualiza campo conforme o valor de controle
+        if controle == 1:
+            baralho.id_carta_inicio = id_carta
+            campo = "id_carta_inicio"
+        elif controle == 2:
+            baralho.id_carta_meio = id_carta
+            campo = "id_carta_meio"
+        elif controle == 3:
+            baralho.id_carta_fim = id_carta
+            campo = "id_carta_fim"
+        else:
+            return Response(
+                {"erro": "Valor de controle inválido. Use 1 (início), 2 (meio) ou 3 (fim)."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        baralho.save()
+
+        return Response(
+            {
+                "mensagem": f"Carta {id_carta} adicionada com sucesso em {campo}.",
+                "baralho": {
+                    "id_jogador": jogador.id_jogador,
+                    "id_carta_inicio": baralho.id_carta_inicio,
+                    "id_carta_meio": baralho.id_carta_meio,
+                    "id_carta_fim": baralho.id_carta_fim,
+                },
+            },
+            status=status.HTTP_200_OK,
+        )
+
+    except Jogador.DoesNotExist:
+        return Response(
+            {"erro": "Jogador não encontrado."}, status=status.HTTP_404_NOT_FOUND
+        )
+    except Baralho.DoesNotExist:
+        return Response(
+            {"erro": "Baralho não encontrado para este jogador."},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+    except Exception as e:
+        return Response({"erro": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+@api_view(["GET"])
+def consultar_cartas_evidencia(request, id_jogador):
+    """
+    Consulta as cartas em evidência de um jogador (início, meio e fim).
+    Retorna id_carta, nome_carta e descricao_carta de cada uma.
+    """
+    try:
+        # Busca o jogador
+        jogador = Jogador.objects.get(id_jogador=id_jogador)
+
+        # Busca o baralho do jogador
+        baralho = Baralho.objects.get(id_jogador=jogador)
+
+        # Função auxiliar para buscar dados da carta
+        def get_carta_info(id_carta):
+            if id_carta == 0:
+                return None  # não há carta definida
+            try:
+                carta = BaralhoCadastro.objects.get(id_carta=id_carta)
+                return {
+                    "id_carta": carta.id_carta,
+                    "nome_carta": carta.nome_carta,
+                    "descricao_carta": carta.descricao_carta,
+                    "cor_carta": carta.cor_carta
+                }
+            except BaralhoCadastro.DoesNotExist:
+                return None
+
+        return Response(
+            {
+                "id_jogador": jogador.id_jogador,
+                "cartas_evidencia": {
+                    "inicio": get_carta_info(baralho.id_carta_inicio),
+                    "meio": get_carta_info(baralho.id_carta_meio),
+                    "fim": get_carta_info(baralho.id_carta_fim),
+                },
+            },
+            status=status.HTTP_200_OK,
+        )
+
+    except Jogador.DoesNotExist:
+        return Response(
+            {"erro": "Jogador não encontrado."}, status=status.HTTP_404_NOT_FOUND
+        )
+    except Baralho.DoesNotExist:
+        return Response(
+            {"erro": "Baralho não encontrado para este jogador."},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+    except Exception as e:
+        return Response({"erro": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 @api_view(["POST"])
 def atualizar_controle_jogador(request):

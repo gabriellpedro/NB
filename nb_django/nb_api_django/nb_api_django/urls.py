@@ -69,6 +69,15 @@ urlpatterns = [
         views.decrementar_controle_jogador_campo,
         name="decrementar_controle_jogador",
     ),
+    # Cartas em Evidência
+    path(
+        "alterar-carta-evidencia/",
+        views.atualizar_cartas_baralho,
+        name="alterar_carta_evidencia",
+    ),
+    path("consulta-carta-evidencia/<int:id_jogador>",
+         views.consultar_cartas_evidencia,
+         name="consultar_cartas_evidencia"),
     path(
         "jogador/<int:id_jogador>/descartar-carta/<int:id_carta>/",
         views.descartar_carta_por_id,
