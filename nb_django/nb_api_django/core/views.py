@@ -2104,6 +2104,47 @@ def criar_notificacao(jogador_origem, jogador_destino, mensagem):
     )
     return notificacao
 
+def verificar_cartas_baralho(jogador_id):
+    #Caso as cartas de evidencia não estejam na lista_de_cartas do usuario
+    #Elas serão zeradas nos campos id_carta_inicio/meio/final
+    try:
+        baralho = Baralho.objects.get(id_jogador_id=jogador_id)
+
+        # Tenta converter lista_de_cartas em lista real
+        try:
+            lista_cartas = json.loads(baralho.lista_de_cartas or "[]")
+        except json.JSONDecodeError:
+            print(f"⚠️ Lista de cartas inválida para jogador {jogador_id}. Resetando lista.")
+            lista_cartas = []
+
+        # Guarda o estado inicial
+        alterado = False
+
+        # Verifica id_carta_inicio
+        if baralho.id_carta_inicio not in lista_cartas:
+            baralho.id_carta_inicio = 0
+            alterado = True
+
+        # Verifica id_carta_meio
+        if baralho.id_carta_meio not in lista_cartas:
+            baralho.id_carta_meio = 0
+            alterado = True
+
+        # Verifica id_carta_fim
+        if baralho.id_carta_fim not in lista_cartas:
+            baralho.id_carta_fim = 0
+            alterado = True
+
+        # Se houve mudança, salva
+        if alterado:
+            with transaction.atomic():
+                baralho.save()
+            #print(f"✅ Baralho do jogador {jogador_id} atualizado com sucesso.")
+        #else:
+            #print(f"ℹ️ Nenhuma alteração necessária para o jogador {jogador_id}.")
+
+    except Baralho.DoesNotExist:
+            print(f"❌ Nenhum baralho encontrado para o jogador {jogador_id}.")
 
 @csrf_exempt
 def criar_elogio(request):
@@ -2548,6 +2589,9 @@ def notificacoes_pendentes_jogador(request, jogador_id, partida_id):
     """
     Retorna as notificações pendentes de um jogador em uma partida específica.
     """
+
+    verificar_cartas_baralho(jogador_id)
+    
     notificacoes = Notificacao.objects.filter(
         id_jogador_destino_id=jogador_id,
         id_partida=partida_id,

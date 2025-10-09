@@ -79,21 +79,8 @@ class _BotaoCoroaWidgetState extends ConsumerState<BotaoCoroaWidget> {
       ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text(mensagem)));
 
-      setState(() {
-        cartasEvidencia?['inicio'] =
-            data['baralho']['id_carta_inicio'] != null &&
-                    data['baralho']['id_carta_inicio'] != 0
-                ? {'id_carta': data['baralho']['id_carta_inicio']}
-                : null;
-        cartasEvidencia?['meio'] = data['baralho']['id_carta_meio'] != null &&
-                data['baralho']['id_carta_meio'] != 0
-            ? {'id_carta': data['baralho']['id_carta_meio']}
-            : null;
-        cartasEvidencia?['fim'] = data['baralho']['id_carta_fim'] != null &&
-                data['baralho']['id_carta_fim'] != 0
-            ? {'id_carta': data['baralho']['id_carta_fim']}
-            : null;
-      });
+      await _fetchCartasEvidencia(idJogador);
+      setState(() {});
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("Erro ao adicionar carta.")),
@@ -109,7 +96,9 @@ class _BotaoCoroaWidgetState extends ConsumerState<BotaoCoroaWidget> {
     final cartasFiltradas = todasCartas.where((c) {
       final tipoCarta =
           (c['tipo_carta'] as String?)?.toLowerCase().trim() ?? '';
-      return tipoCarta == tipo.toLowerCase();
+      final tipoFiltro = tipo.toLowerCase();
+      return tipoCarta == tipoFiltro ||
+          (tipoFiltro == 'fim' && tipoCarta == 'final');
     }).toList();
 
     if (cartasFiltradas.isEmpty) {
@@ -180,11 +169,13 @@ class _BotaoCoroaWidgetState extends ConsumerState<BotaoCoroaWidget> {
     );
   }
 
-  void _abrirSelecaoCartasPopup(BuildContext context, int idJogador) async {
-    if (cartasEvidencia == null) await _fetchCartasEvidencia(idJogador);
-    if (todasCartas.isEmpty) await _fetchTodasCartas(idJogador);
+  Future<void> _abrirSelecaoCartasPopup(
+      BuildContext context, int idJogador) async {
+    // 🔁 Sempre atualiza antes de abrir
+    await _fetchCartasEvidencia(idJogador);
+    await _fetchTodasCartas(idJogador);
 
-    showDialog(
+    await showDialog(
       context: context,
       barrierDismissible: true,
       builder: (context) {
@@ -249,6 +240,10 @@ class _BotaoCoroaWidgetState extends ConsumerState<BotaoCoroaWidget> {
         );
       },
     );
+
+    // 🔁 Atualiza novamente depois de fechar o popup
+    await _fetchCartasEvidencia(idJogador);
+    setState(() {});
   }
 
   Widget _buildCardContainer(BuildContext context, String titulo,
@@ -262,7 +257,7 @@ class _BotaoCoroaWidgetState extends ConsumerState<BotaoCoroaWidget> {
         tipo = 'meio';
         break;
       case 3:
-        tipo = 'fim';
+        tipo = 'final';
         break;
     }
 
@@ -272,7 +267,7 @@ class _BotaoCoroaWidgetState extends ConsumerState<BotaoCoroaWidget> {
         cartaData['id_carta'] != 0) {
       cartaParaExibir = todasCartas.firstWhere(
         (c) => c['id_carta'] == cartaData['id_carta'],
-        orElse: () => {}, // Retorna mapa vazio caso não encontre
+        orElse: () => {},
       );
       if (cartaParaExibir.isEmpty) cartaParaExibir = null;
     }

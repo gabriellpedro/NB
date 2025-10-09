@@ -543,6 +543,8 @@ class _PlayerSelectionButtonState extends ConsumerState<PlayerSelectionButton> {
             );
           }
           return;
+        } else if (idCasa == 29) {
+          jogadorAlvo = await _getJogadorDireita(jogador.idJogador);
         } else {
           return;
         }
