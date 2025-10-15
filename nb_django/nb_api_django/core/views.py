@@ -391,6 +391,188 @@ def populate_baralho_cadastro(request):
     return JsonResponse({"message": "Tabela populada com sucesso!"}, status=201)
 
 
+def verificar_vitoria_e_notificar():
+    """
+    Verifica todos os baralhos e cria notificações caso algum jogador
+    tenha completado uma sequência válida de cartas (Início, GARIEBL, Fim).
+    """
+    # Dicionário com todas as histórias fixas
+    historias = {
+        (1, 6, 29): {
+            "tipo": "Bullying Verbal",
+            "titulo": "História 1",
+            "inicio": "Ao longe, você escuta algumas pessoas rindo e comentando de alguém com um apelido. (Carta 1)",
+            "meio": "Você fala com o grupo e tenta argumentar contra essa ação. (Carta 6)",
+            "fim": "Após debate, as pessoas concordam com você e tudo volta ao normal. (Carta 29)",
+        },
+        (2, 9, 28): {
+            "tipo": "Bullying Verbal",
+            "titulo": "História 2",
+            "inicio": "Um colega de sala comenta o peso de outra colega com um tom debochado e humilhante. (Carta 2)",
+            "meio": "Você tenta argumentar contra essa ação, mas o grupo não gosta nada de você contrariá-los. (Carta 9)",
+            "fim": "Após todas as suas ações, você conseguiu parar os comentários se afastando das pessoas que os fizeram. (Carta 28)",
+        },
+        (3, 7, 30): {
+            "tipo": "Bullying Verbal",
+            "titulo": "História 3",
+            "inicio": "Enquanto joga futebol, você escuta o time adversário dizendo o quão “perna de pau” você é. (Carta 3)",
+            "meio": "Você ignora o comentário, porém cada dia fica pior. (Carta 7)",
+            "fim": "Você decide conversar com um responsável, e sua atitude resulta em uma chamada de atenção — você conseguiu intervir antes que algo pior acontecesse. (Carta 30)",
+        },
+        (4, 11, 29): {
+            "tipo": "Bullying Verbal",
+            "titulo": "História 4",
+            "inicio": "Um trio de meninos chega em você e pergunta qual foi o acidente que fez sua cara ficar “assim” e saem rindo. (Carta 4)",
+            "meio": "Após piora,você decide tomar uma providência e conversar com as pessoas (Carta 11)",
+            "fim": "Após o debate, as pessoas concordam com você e tudo volta ao normal. (Carta 29)",
+        },
+        (5, 10, 29): {
+            "tipo": "Bullying Verbal",
+            "titulo": "História 5",
+            "inicio": "Seus amigos comentam sobre a aparência de uma pessoa que você não é tão próxima. (Carta 5)",
+            "meio": "após tanto debate sobre o assunto as pessoas acabam concordando com sua argumentação.(Carta 10)",
+            "fim": "após o debate as pessoas concordam com você e tudo volta ao normal. (Carta 29)",
+        },
+        (13, 18, 25): {
+            "tipo": "Bullying Físico",
+            "titulo": "História 6",
+            "inicio": "Você sente seu cabelo ser puxado por alguém que há semanas falava de você. (Carta 13)",
+            "meio": "Por impulso, você se defende de quem o atacou. (Carta 18)",
+            "fim": "Sua ação individual foi eficiente! Mas lembre-se de sempre avisar alguém. (Carta 25)",
+        },
+        (14, 22, 26): {
+            "tipo": "Bullying Físico",
+            "titulo": "História 7",
+            "inicio": "Você vê um colega colocando o pé na frente de uma menina para fazê-la cair. (Carta 14)",
+            "meio": "Você se intromete na situação com a intenção de acabar com a agressão. (Carta 22)",
+            "fim": "Você consegue chamar alguém para ajudar e a situação é resolvida. (Carta 26)",
+        },
+        (15, 20, 27): {
+            "tipo": "Bullying Físico",
+            "titulo": "História 8",
+            "inicio": "Ao longe, você vê um grupo de pessoas circulando um garoto e tampando sua visão do que acontece. (Carta 15)",
+            "meio": "Agir sozinho não funcionou então chamar alguém foi o que lhe restou. (Carta 20)",
+            "fim": "Você tentou agir sozinho, mas não deu certo — por sorte alguém mais velho apareceu para ajudar. (Carta 27)",
+        },
+        (16, 24, 25): {
+            "tipo": "Bullying Físico",
+            "titulo": "História 9",
+            "inicio": "Você tropeça em algo e vê que foi uma pessoa que o derrubou. (Carta 16)",
+            "meio": "Você tenta conversar com o agressor para mudar a situação. (Carta 24)",
+            "fim": "Sua conversa foi efetiva! Mas lembre-se de avisar alguém. (Carta 25)",
+        },
+        (17, 19, 25): {
+            "tipo": "Bullying Físico",
+            "titulo": "História 10",
+            "inicio": "Uma menina está sendo encurralada por um grupo de garotos. (Carta 17)",
+            "meio": "Você corre para ajudar a pessoa e chama alguém. (Carta 19)",
+            "fim": "Você consegue ajuda e a situação é resolvida. (Carta 26)",
+        },
+        (31, 32, 33): {
+            "tipo": "Bullying Moral",
+            "titulo": "História 11",
+            "inicio": "Chega aos seus ouvidos boatos sobre você. (Carta 31)",
+            "meio": "Você busca quem começou com os boatos para tomar uma providência. (Carta 32)",
+            "fim": "Com isso, a situação é resolvida e você aprende a importância de não espalhar boatos sobre os outros. (Carta 33)",
+        },
+        (34, 35, 36): {
+            "tipo": "Bullying Moral",
+            "titulo": "História 12",
+            "inicio": "Seus colegas estão espalhando mentiras sobre alguém. (Carta 34)",
+            "meio": "Você age rapidamente e repreende quem está fazendo isso. (Carta 35)",
+            "fim": "As pessoas percebem que estavam erradas e param de espalhar mentiras. (Carta 36)",
+        },
+        (37, 38, 39): {
+            "tipo": "Bullying Moral",
+            "titulo": "História 13",
+            "inicio": "Seu celular vibra e você vê mensagens difamando sua imagem. (Carta 37)",
+            "meio": "Você se chateia e decide avisar algum responsável. (Carta 38)",
+            "fim": "O responsável intervém e a situação é encerrada. (Carta 39)",
+        },
+        (40, 41, 42): {
+            "tipo": "Bullying Moral",
+            "titulo": "História 14",
+            "inicio": "Você vê um grupo no WhatsApp criado apenas para falar de você. (Carta 40)",
+            "meio": "Você procura ajuda de alguém mais velho já que não soube agir sozinho. (Carta 41)",
+            "fim": "Com ajuda, o grupo é desfeito e todos recebem uma orientação sobre respeito. (Carta 42)",
+        },
+        (43, 44, 45): {
+            "tipo": "Bullying Moral",
+            "titulo": "História 15",
+            "inicio": "Seu grupo tenta te incluir na difamação de uma colega. (Carta 43)",
+            "meio": "Você não se chateia, mas se afasta e toma providência para não acontecer de novo. (Carta 44)",
+            "fim": "Com seu exemplo, o grupo aprende e evita esse tipo de atitude. (Carta 45)",
+        },
+        (43, 52, 56): {
+            "tipo": "Bullying Psicológico",
+            "titulo": "História 16",
+            "inicio": "ao passar do tempo você se viu sendo excluída pelo seus colegas de atividade que costumava participar (Carta 43)",
+            "meio": "com a atual situação você busca outros amigos já que o seus antigos já não eram mais confiáveis( Carta 52)",
+            "fim": "Sua conversa foi efetiva! Mas lembre-se de manter pessoas responsáveis informadas. (Carta 56)",
+        },
+        (44,48,55): {
+            "tipo": "Bullying Psicológico",
+            "titulo": "História 17",
+            "inicio": "Você vê um garoto que costumava andar com você intimidando um menino mais novo. (Carta 44)",
+            "meio": "Você rapidamente vai até a pessoa para tirá-la daquela situação. (Carta 48)",
+            "fim": "Indo ajudar sozinho, você acaba descobrindo que ela é alguém muito interessante. (Carta 55)",
+        },
+        (45, 50, 57): {
+            "tipo": "Bullying Psicológico",
+            "titulo": "História 18",
+            "inicio": "Durante todo seu percurso até a sua sala de aula você observou que um trio de meninos estava perseguindo um que andava sozinho. (Carta 45)",
+            "meio": "Você tenta resolver sozinho, mas os agressores não gostaram muito. (Carta 50)",
+            "fim": "Sua ação não foi efetiva, mas você conseguiu ajuda antes da situação piorar. (Carta 57)",
+        },
+        (46, 54, 56): {
+            "tipo": "Bullying Psicológico",
+            "titulo": "História 19",
+            "inicio": "Seus amigos começaram a te chantagear com um segredo pessoal. (Carta 46)",
+            "meio": "Você tenta conversar com eles para reverter a situação. (Carta 54)",
+            "fim": "Sua conversa foi efetiva! Mas é importante informar alguém responsável. (Carta 56)",
+        },
+    }
+
+    baralhos = Baralho.objects.all()
+
+    for baralho in baralhos:
+        if not (
+            baralho.id_carta_inicio and baralho.id_carta_meio and baralho.id_carta_fim
+        ):
+            continue
+
+        sequencia = (
+            baralho.id_carta_inicio,
+            baralho.id_carta_meio,
+            baralho.id_carta_fim,
+        )
+
+        if sequencia in historias:
+            historia = historias[sequencia]
+            jogador_vencedor = baralho.id_jogador
+
+            # Monta o texto da notificação
+            mensagem = (
+                f"Jogador {jogador_vencedor.nome_jogador} ganhou o jogo, "
+                f"completando as cartas da {historia['titulo']} do {historia['tipo']}:\n\n"
+                f"Início: {historia['inicio']}\n"
+                f"Meio: {historia['meio']}\n"
+                f"Final: {historia['fim']}"
+            )
+
+            # Notifica todos os jogadores da mesma partida
+            jogadores_partida = Jogador.objects.filter(id_partida=baralho.id_partida)
+            for jogador in jogadores_partida:
+                Notificacao.objects.create(
+                    id_jogador_origem=jogador_vencedor,
+                    id_jogador_destino=jogador,
+                    id_partida=baralho.id_partida.id_partida,
+                    mensagem=mensagem,
+                    necessita_atualizar=True,
+                    processado=False,
+                )
+
+
 class CriarJogadorView(APIView):
     """
     Cria um jogador vinculado a uma partida.
@@ -2104,9 +2286,10 @@ def criar_notificacao(jogador_origem, jogador_destino, mensagem):
     )
     return notificacao
 
+
 def verificar_cartas_baralho(jogador_id):
-    #Caso as cartas de evidencia não estejam na lista_de_cartas do usuario
-    #Elas serão zeradas nos campos id_carta_inicio/meio/final
+    # Caso as cartas de evidencia não estejam na lista_de_cartas do usuario
+    # Elas serão zeradas nos campos id_carta_inicio/meio/final
     try:
         baralho = Baralho.objects.get(id_jogador_id=jogador_id)
 
@@ -2114,7 +2297,9 @@ def verificar_cartas_baralho(jogador_id):
         try:
             lista_cartas = json.loads(baralho.lista_de_cartas or "[]")
         except json.JSONDecodeError:
-            print(f"⚠️ Lista de cartas inválida para jogador {jogador_id}. Resetando lista.")
+            print(
+                f"Lista de cartas inválida para jogador {jogador_id}. Resetando lista."
+            )
             lista_cartas = []
 
         # Guarda o estado inicial
@@ -2139,12 +2324,13 @@ def verificar_cartas_baralho(jogador_id):
         if alterado:
             with transaction.atomic():
                 baralho.save()
-            #print(f"✅ Baralho do jogador {jogador_id} atualizado com sucesso.")
-        #else:
-            #print(f"ℹ️ Nenhuma alteração necessária para o jogador {jogador_id}.")
+            # print(f"✅ Baralho do jogador {jogador_id} atualizado com sucesso.")
+        # else:
+        # print(f"ℹ️ Nenhuma alteração necessária para o jogador {jogador_id}.")
 
     except Baralho.DoesNotExist:
-            print(f"❌ Nenhum baralho encontrado para o jogador {jogador_id}.")
+        print(f"Nenhum baralho encontrado para o jogador {jogador_id}.")
+
 
 @csrf_exempt
 def criar_elogio(request):
@@ -2242,6 +2428,7 @@ def listar_elogios_partida(request, id_partida):
     except Exception as e:
         return JsonResponse({"erro": str(e)}, status=500)
 
+
 @api_view(["POST"])
 def atualizar_cartas_baralho(request):
     """
@@ -2292,7 +2479,9 @@ def atualizar_cartas_baralho(request):
             campo = "id_carta_fim"
         else:
             return Response(
-                {"erro": "Valor de controle inválido. Use 1 (início), 2 (meio) ou 3 (fim)."},
+                {
+                    "erro": "Valor de controle inválido. Use 1 (início), 2 (meio) ou 3 (fim)."
+                },
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -2323,6 +2512,7 @@ def atualizar_cartas_baralho(request):
     except Exception as e:
         return Response({"erro": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+
 @api_view(["GET"])
 def consultar_cartas_evidencia(request, id_jogador):
     """
@@ -2346,7 +2536,7 @@ def consultar_cartas_evidencia(request, id_jogador):
                     "id_carta": carta.id_carta,
                     "nome_carta": carta.nome_carta,
                     "descricao_carta": carta.descricao_carta,
-                    "cor_carta": carta.cor_carta
+                    "cor_carta": carta.cor_carta,
                 }
             except BaralhoCadastro.DoesNotExist:
                 return None
@@ -2374,6 +2564,7 @@ def consultar_cartas_evidencia(request, id_jogador):
         )
     except Exception as e:
         return Response({"erro": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
 
 @api_view(["POST"])
 def atualizar_controle_jogador(request):
@@ -2591,7 +2782,9 @@ def notificacoes_pendentes_jogador(request, jogador_id, partida_id):
     """
 
     verificar_cartas_baralho(jogador_id)
-    
+
+    verificar_vitoria_e_notificar()
+
     notificacoes = Notificacao.objects.filter(
         id_jogador_destino_id=jogador_id,
         id_partida=partida_id,
@@ -2736,7 +2929,7 @@ def executar_acao_casa(request):
                 jogador, id_carta_jogador, id_carta_esquerda
             )
 
-        elif acao.id_acao == 19: # Troca de carta com jogador à esquerda
+        elif acao.id_acao == 19:  # Troca de carta com jogador à esquerda
             id_carta_jogador = request.data.get("id_carta_jogador")
             id_carta_direita = request.data.get("id_carta_direita")
 
